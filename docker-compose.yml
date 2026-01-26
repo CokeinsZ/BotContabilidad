@@ -1,0 +1,18 @@
+services:
+  bot-contabilidad:
+    build: .
+    container_name: bot-contabilidad
+    restart: unless-stopped
+    ports:
+      - 8000
+    volumes:
+      # Montar client_secret.json desde el servidor
+      - /home/debian/secrets/client_secret.json:/app/client_secret.json:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - pan-de-oro
+
+networks:
+  pan-de-oro:
+    external: true
