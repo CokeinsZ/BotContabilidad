@@ -14,7 +14,8 @@ RUN uv sync --no-dev
 
 # Copiar código fuente
 COPY src/ ./src/
-RUN cd src
+# Cambiar al directorio src para ejecutar la aplicación
+WORKDIR /app/src
 # Exponer puerto para FastAPI
 EXPOSE 8000
 

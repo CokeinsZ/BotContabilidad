@@ -5,11 +5,17 @@ services:
     restart: unless-stopped
     ports:
       - 8000
+      - 8080
     volumes:
       # Montar client_secret.json desde el servidor
       - /home/debian/secrets/client_secret.json:/app/client_secret.json:ro
+      - /home/debian/secrets/token.json:/app/token.json
     environment:
       - PYTHONUNBUFFERED=1
+      - EVOLUTION_API_BASE_URL=${EVOLUTION_API_BASE_URL}
+      - EVOLUTION_API_INSTANCE_NAME=${EVOLUTION_API_INSTANCE_NAME}
+      - EVOLUTION_API_TOKEN=${EVOLUTION_API_TOKEN}
+      - WHISPER_URL=${WHISPER_URL}
     networks:
       - pan-de-oro
 
