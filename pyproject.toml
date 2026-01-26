@@ -1,0 +1,15 @@
+[project]
+name = "botcontabilidad"
+version = "0.1.0"
+description = "Bot hecho para llevar la contabilidad (solo gastos y efectivo generado) de la panadería Pan de Oro"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.128.0",
+    "google-api>=0.1.12",
+    "google-api-python-client>=2.188.0",
+    "google-auth>=2.47.0",
+    "google-auth-oauthlib>=1.2.4",
+    "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
+]
