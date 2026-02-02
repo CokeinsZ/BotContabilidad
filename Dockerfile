@@ -2,6 +2,9 @@ FROM python:3.14-slim
 
 WORKDIR /app
 
+# Instalar curl y limpiar cache
+RUN apt-get update && apt-get install -y curl 
+
 # Instalar uv para gestión de dependencias
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 

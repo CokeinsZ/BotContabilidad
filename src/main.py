@@ -18,7 +18,7 @@ def create_server() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
-            "http://localhost", "http://localhost:8080", 
+            "http://localhost", "http://localhost:8080", "http://localhost:8000", 
             "http://158.69.193.190", "http://158.69.193.190:8080",
             "https://oauth.cokeinsz.com"
         ],
