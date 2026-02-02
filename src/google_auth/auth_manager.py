@@ -100,38 +100,50 @@ class GoogleAuthManager:
 
         return self._credentials
 
+    def refresh_credentials(self) -> bool:
+        """
+        Intenta refrescar el token sin iniciar el servidor web.
+
+        Este método es útil para renovar tokens expirados de forma automática
+        sin requerir interacción del usuario.
+
+        Returns:
+            bool: True si el token se refrescó exitosamente, False en caso contrario.
+
+        Raises:
+            ValueError: Si no hay credenciales guardadas o no tienen refresh_token.
+        """
+        # Cargar credenciales si no están en memoria
+        if not self._credentials and self.token_path.exists():
+            self._credentials = Credentials.from_authorized_user_file(
+                str(self.token_path), self.scopes
+            )
+
+        # Verificar que existan credenciales
+        if not self._credentials:
+            raise ValueError(
+                "No hay credenciales guardadas. Ejecute get_credentials() primero."
+            )
+
+        # Verificar que tengan refresh_token
+        if not self._credentials.refresh_token:
+            raise ValueError(
+                "Las credenciales no tienen refresh_token. Se requiere reautenticarse."
+            )
+
+        try:
+            # Refrescar el token
+            self._credentials.refresh(Request())
+            self._save_credentials()
+            return True
+        except Exception as e:
+            raise ValueError(f"Error al refrescar el token: {str(e)}")
+
     def _save_credentials(self) -> None:
         """Guarda las credenciales en el archivo de token."""
         if self._credentials:
             with open(self.token_path, "w") as token_file:
                 token_file.write(self._credentials.to_json())
-
-    def revoke_credentials(self) -> bool:
-        """
-        Revoca las credenciales actuales.
-
-        Returns:
-            bool: True si se revocaron exitosamente, False en caso contrario.
-        """
-        if self._credentials:
-            try:
-                import requests
-
-                requests.post(
-                    "https://oauth2.googleapis.com/revoke",
-                    params={"token": self._credentials.token},
-                    headers={"content-type": "application/x-www-form-urlencoded"},
-                )
-                self._credentials = None
-
-                # Eliminar el archivo de token
-                if self.token_path.exists():
-                    self.token_path.unlink()
-
-                return True
-            except Exception:
-                return False
-        return False
 
     def is_authenticated(self) -> bool:
         """

@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 
+from google_auth.auth_controller import generate_credentials, router as auth_router
 from whatsapp.whatsapp_controller import router as whatsapp_router
 
 def create_server() -> FastAPI:
@@ -31,16 +32,10 @@ def create_server() -> FastAPI:
     # Configurar autenticación HTTP Bearer
     app.security = HTTPBearer()
 
+    app.include_router(auth_router)
     app.include_router(whatsapp_router)
 
     return app
-
-def generate_credentials():
-    auth_manager = GoogleAuthManager()
-    credentials = auth_manager.get_credentials()
-    print("Autenticación exitosa. Credenciales obtenidas.")
-
-    return credentials
 
 
 credentials = generate_credentials()
