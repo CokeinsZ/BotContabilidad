@@ -7,6 +7,10 @@ service = WhatsAppService()
 
 @router.post("/messages-upsert")
 async def read_messages(request: Request):
-    body = await request.json()
-    await service.handle_incoming_message(body)
-    return {"status": "received"}
+    try:
+        body = await request.json()
+        await service.handle_incoming_message(body)
+        return {"status": "received"}
+    except Exception as e:
+        print(request)
+        return {"status": "error", "message": str(e)}
