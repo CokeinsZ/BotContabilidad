@@ -1,17 +1,17 @@
-import os
 import base64
 import httpx
-from dotenv import load_dotenv
 
+from config import EVOLUTION_API_BASE_URL, EVOLUTION_API_INSTANCE_NAME, EVOLUTION_API_TOKEN
 from ai.ollama_service import OllamaService
 from ai.whisper_service import WhisperService
 
 class WhatsAppService:
-    def __init__(self):
-        load_dotenv()
-        self.base_url = os.getenv("EVOLUTION_API_BASE_URL")
-        self.instance_name = os.getenv("EVOLUTION_API_INSTANCE_NAME")
-        self.token = os.getenv("EVOLUTION_API_TOKEN")
+    def __init__(self, dispatcher):
+        self.dispatcher = dispatcher
+        
+        self.base_url = EVOLUTION_API_BASE_URL
+        self.instance_name = EVOLUTION_API_INSTANCE_NAME
+        self.token = EVOLUTION_API_TOKEN
         self.client = httpx.AsyncClient()
 
         self.whisper_service = WhisperService()
@@ -24,13 +24,47 @@ class WhatsAppService:
             body: El cuerpo del mensaje entrante.
         """
 
+        remote_jid = body.get("data", {}).get("key", {}).get("remoteJid")
+
         if (body.get("data", {}).get("messageType") == "audioMessage"):
             message_id = body.get('data', {}).get('key', {}).get('id')
-            return await self._process_audio_message(message_id)
+            return await self._process_audio_message(message_id, remote_jid)
         else:
-            return self._process_text_message(body)
+            return self._process_text_message(body, remote_jid)
         
-    async def _process_audio_message(self, message_id):
+    async def send_message(self, to, message):
+        """
+        Envía un mensaje de texto a través de la API de Evolution.
+
+        Args:
+            to: El destinatario del mensaje.
+            message: El contenido del mensaje.
+        """
+        try:
+            url = f"{self.base_url}/message/sendText/{self.instance_name}"
+            
+            payload = {
+                "number": to,
+                "text": message
+            }
+            
+            response = await self.client.post(
+                url,
+                json=payload,
+                headers = {
+                    'Content-Type': 'application/json',
+                    'apikey': self.token
+                }
+            )
+            response.raise_for_status()
+            print(f"Mensaje enviado a {to}: {message}")
+            
+        except httpx.HTTPError as e:
+            print(f"Error al enviar mensaje: {e}")
+        except Exception as e:
+            print(f"Error inesperado al enviar mensaje: {e}")
+
+    async def _process_audio_message(self, message_id, remote_jid):
         """
         Procesa un mensaje de audio entrante.
 
@@ -40,8 +74,11 @@ class WhatsAppService:
         audio_binary = await self._get_audio_binaries(message_id)
         audio_transcription = await self.whisper_service.transcribe_audio(audio_binary)
         command = await self.ollama_service.extract_commands(audio_transcription)
+
+        print(f"Transcripción: {audio_transcription}")
+        print(f"Comando generado: {command}")
    
-    def _process_text_message(self, body):
+    def _process_text_message(self, body, remote_jid):
         """
         Procesa un mensaje de texto entrante.
 
@@ -50,7 +87,6 @@ class WhatsAppService:
         """
         print(body)
         
-
     async def _get_audio_binaries(self, message_id):
         try:
             # Obtener el base64 del audio

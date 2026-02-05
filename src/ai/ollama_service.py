@@ -1,13 +1,12 @@
-import os
-from dotenv import load_dotenv
 import httpx
+
+from config import OLLAMA_URL, OLLAMA_MODEL
 
 class OllamaService:
     def __init__(self):
-        load_dotenv()
         self.client = httpx.AsyncClient()
-        self.ollama_url = os.getenv("OLLAMA_URL")
-        self.ollama_model = os.getenv("OLLAMA_MODEL")
+        self.ollama_url = OLLAMA_URL
+        self.ollama_model = OLLAMA_MODEL
 
     async def extract_commands(self, audio_transcription):
         """
@@ -54,7 +53,6 @@ class OllamaService:
             )
 
             response.raise_for_status()
-            print(response.json())
             return response.json().get("response").strip().lower()
 
         except httpx.HTTPStatusError as e:

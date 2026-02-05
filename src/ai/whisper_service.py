@@ -1,11 +1,10 @@
-import os
-from dotenv import load_dotenv
 import httpx
+
+from config import WHISPER_URL
 
 class WhisperService:
     def __init__(self):
-        load_dotenv()
-        self.whisper_url = os.getenv("WHISPER_URL")
+        self.whisper_url = WHISPER_URL
         self.client = httpx.AsyncClient()
 
     async def transcribe_audio(self, audio_binary):
