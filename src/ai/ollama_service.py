@@ -43,7 +43,7 @@ class OllamaService:
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.3,
+                    "temperature": 0.1,
                 }
             }
 
