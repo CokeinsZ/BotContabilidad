@@ -66,38 +66,38 @@ class CommandDispatcher:
             return(f"⚠️ Comando desconocido: {cmd}")
 
     def list_commands(self):
-        return (
-            "Bienvenido al Bot de Contabilidad. \n"
-            "Link a la carpeta: https://drive.google.com/drive/folders/1XGiZbI4M4OVpGNZT-p205fKvjJ5Zf7sC?usp=sharing \n"
-            "Instrucciones de uso:\n"
-            "1. Seleccionar o crear una hoja, usando el comando: \n"
-            "\t 'hoja <fecha>' \n"
-            "2. Ejecutar la acción que desees: \n"
-            "\t 2.1. Para agregar un gasto: \n"
-            "\t\t 'gasto <monto> <descripcion>'\n"
+        return """
+            Bienvenido al Bot de Contabilidad. \n
+            Link a la carpeta: https://drive.google.com/drive/folders/1XGiZbI4M4OVpGNZT-p205fKvjJ5Zf7sC?usp=sharing \n
+            Instrucciones de uso:\n
+            1. Seleccionar o crear una hoja, usando el comando: \n
+            \t 'hoja <fecha>' \n
+            2. Ejecutar la acción que desees: \n
+            \t 2.1. Para agregar un gasto: \n
+            \t\t 'gasto <monto> <descripcion>'\n
 
-            "\t 2.2. Para agregar un pago a trabajadores: \n"
-            "\t\t 'trabajador <monto> <nombre>'\n"
+            \t 2.2. Para agregar un pago a trabajadores: \n
+            \t\t 'trabajador <monto> <nombre>'\n
 
-            "\t 2.3. Para agregar un vale del administrador: \n"
-            "\t\t 'administrador <monto>'\n"
+            \t 2.3. Para agregar un vale del administrador: \n
+            \t\t 'administrador <monto>'\n
 
-            "\t 2.4. Para agregar un retiro de efectivo: \n"
-            "\t\t 'retiro <monto> <descripcion>'\n"
+            \t 2.4. Para agregar un retiro de efectivo: \n
+            \t\t 'retiro <monto> <descripcion>'\n
 
-            "\t 2.5. Para registrar el saldo de efectivo: \n"
-            "\t\t 'saldo <monto>'\n"
+            \t 2.5. Para registrar el saldo de efectivo: \n
+            \t\t 'saldo <monto>'\n
 
-            "\t 2.6. Para agregar un el efectivo del dia: \n"
-            "\t\t 'efectivo <monto>'\n"
+            \t 2.6. Para agregar un el efectivo del dia: \n
+            \t\t 'efectivo <monto>'\n
 
-            "\t 2.7. Para terminar el dia, y actualizar la hoja de resumen de ventas: \n"
-            "\t\t 'terminar_dia' \n"
+            \t 2.7. Para terminar el dia, y actualizar la hoja de resumen de ventas: \n
+            \t\t 'terminar_dia' \n
 
-            "\t 2.8. Para ver las instrucciones de uso: \n"
-            "\t\t 'instrucciones' \n"
+            \t 2.8. Para ver las instrucciones de uso: \n
+            \t\t 'instrucciones' \n
 
-            "3. Al finalizar, ejecutar el comando 'terminar_dia' para ver el resumen de ventas. \n"
-            
-            "¡Gracias por usar el Bot de Contabilidad!"
-        )
+            3. Al finalizar, ejecutar el comando 'terminar_dia' para ver el resumen de ventas. \n
+        
+            ¡Gracias por usar el Bot de Contabilidad!
+        """

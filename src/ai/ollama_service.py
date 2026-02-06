@@ -12,28 +12,42 @@ class OllamaService:
         """
         Traduce el lenguaje natural de la transcripción a comandos del Bot de Contabilidad.
         """
+
+        from datetime import datetime
+        fecha_hoy = datetime.now().strftime("%d-%m-%Y")
+
         prompt = f"""
-            Eres un traductor de lenguaje natural a comandos técnicos para un Bot de Contabilidad.
-            Tu objetivo es transformar lo que el usuario dice en uno de los siguientes comandos válidos:
+            Eres un conversor de audio a comandos de texto. Tu salida debe ser ÚNICAMENTE el comando. 
+            NO respondas con "Aquí tienes", NO uses "Comando:", NO uses negritas, NO uses puntos finales.
 
-            COMANDOS VÁLIDOS:
-            1. hoja <fecha> (ej: hoja 25-01-2026)
-            2. gasto <monto> <descripcion> (ej: gasto 5000 papas amarillas)
-            3. trabajador <monto> <nombre> (ej: trabajador 50000 juan panadero)
-            4. administrador <monto> (ej: administrador 20000)
-            5. retiro <monto> <descripcion> (ej: retiro 100000 Postobón)
-            6. saldo <monto> (ej: saldo 450000)
-            7. efectivo <monto> (ej: efectivo 800000)
-            8. terminar_dia
-            9. instrucciones
+            FECHA DE HOY: {fecha_hoy}
 
-            REGLAS ESTRICTAS:
-            - Si el usuario dice "lucas", "mil" o "k", conviértelo a números (ej: "5 lucas" -> 5000, "20 mil" -> 20000).
-            - Solo responde con el comando. No digas "Aquí tienes", ni uses puntos finales.
-            - Si no entiendes la intención, responde exactamente: instrucciones
+            DICCIONARIO DE COMANDOS:
+            - "hoja <dd-mm-aaaa>" -> Para crear o seleccionar planilla.
+            - "gasto <monto> <descripción>" -> Para compras de insumos/mercancía.
+            - "trabajador <monto> <nombre>" -> Para pagar sueldos o adelantos a personas.
+            - "administrador <monto>" -> Vales para el jefe/dueño.
+            - "retiro <monto> <descripción>" -> Sacar dinero de la caja.
+            - "saldo <monto>" -> Informar cuánto dinero físico hay.
+            - "efectivo <monto>" -> Dinero de ventas del día.
+            - "terminar_dia", "instrucciones", "deshacer".
+
+            REGLAS DE ORO:
+            1. Si hay un NOMBRE de persona (ej: Julian, Maria, Stiven), usa 'trabajador', NO 'gasto'.
+            2. Convierte "lucas", "mil", "k" en ceros (ej: 5 lucas = 5000).
+            3. Si el usuario dice "hoy", usa {fecha_hoy}.
+            4. Responde SOLO el comando.
+
+            EJEMPLOS:
+            Usuario: "Pon la hoja de hoy" -> hoja {fecha_hoy}
+            Usuario: "Pagale 40 lucas a Julian" -> trabajador 40000 julian
+            Usuario: "Le di un vale de 20k al administrador" -> administrador 20000
+            Usuario: "Compré azúcar por 60 mil" -> gasto 60000 azúcar
+            Usuario: "Retiro de 100k para el banco" -> retiro 100000 banco
 
             
-            El usuario dijo: "{audio_transcription}"
+            Con esa información, convierte esta transcripción en un comando: 
+            {audio_transcription}
         """
         try:
             payload = {
