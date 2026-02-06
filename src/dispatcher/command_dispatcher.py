@@ -1,3 +1,4 @@
+from dispatcher.commands.cash_service import CashService
 from dispatcher.commands.employees_service import EmployeesService
 from dispatcher.commands.expenses_service import ExpensesService
 from dispatcher.commands.sheets_service import SheetsService
@@ -9,7 +10,7 @@ class CommandDispatcher:
         self.google_sheets_service = sheets_service
 
         self.sheets_service = SheetsService(self.google_sheets_service, self.drive_service)
-        self.cash_service = None
+        self.cash_service = CashService(self.sheets_service, self.google_sheets_service)
         self.employees_service = EmployeesService(self.sheets_service, self.google_sheets_service)
         self.expenses_service = ExpensesService(self.sheets_service, self.google_sheets_service)
 
@@ -26,6 +27,15 @@ class CommandDispatcher:
 
             "administrador": self.employees_service.record_admin_payment,
             "admin": self.employees_service.record_admin_payment,
+
+            "retiro": self.cash_service.record_withdrawal,
+            "r": self.cash_service.record_withdrawal,
+
+            "saldo": self.cash_service.record_balance,
+            "s": self.cash_service.record_balance,
+
+            "efectivo": self.cash_service.record_cash,
+            "e": self.cash_service.record_cash,
             
         }
 
