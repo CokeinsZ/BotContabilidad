@@ -30,7 +30,8 @@ class WhatsAppService:
             message_id = body.get('data', {}).get('key', {}).get('id')
             return await self._process_audio_message(message_id, remote_jid)
         else:
-            return self._process_text_message(body, remote_jid)
+            message = body.get("data", {}).get("message", {}).get("conversation")
+            return self._process_text_message(message, remote_jid)
         
     async def send_message(self, to, message):
         """
@@ -70,23 +71,29 @@ class WhatsAppService:
 
         Args:
             message_id: El ID del mensaje de audio.
+            remote_jid: El identificador del remitente.
         """
         audio_binary = await self._get_audio_binaries(message_id)
         audio_transcription = await self.whisper_service.transcribe_audio(audio_binary)
         command = await self.ollama_service.extract_commands(audio_transcription)
 
-        print(f"Transcripción: {audio_transcription}")
-        print(f"Comando generado: {command}")
+        response = self.dispatcher.run(command)
+        if response:
+            await self.send_message(remote_jid, response)
    
-    def _process_text_message(self, body, remote_jid):
+    async def _process_text_message(self, message, remote_jid):
         """
         Procesa un mensaje de texto entrante.
 
         Args:
-            body: El cuerpo del mensaje entrante.
+            message: El mensaje entrante.
         """
-        print(body)
-        
+        command = await self.ollama_service.extract_commands(message)
+
+        response = self.dispatcher.run(command)
+        if response:
+            await self.send_message(remote_jid, response)
+
     async def _get_audio_binaries(self, message_id):
         try:
             # Obtener el base64 del audio

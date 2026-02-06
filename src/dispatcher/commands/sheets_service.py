@@ -14,18 +14,20 @@ class SheetsService:
             args: Lista de argumentos, donde el primer elemento es el nombre de la planilla.
         """
         if not args:
-            print("⚠️ Debes proporcionar el nombre de la planilla.")
-            return
+            return ("⚠️ Debes proporcionar el nombre de la planilla.")
 
         sheet_name = args[0]
         id, name = self.drive_service.duplicate_planilla_spreadsheet(sheet_name)
-        if id is None: return
+        if id is None: return (f"⚠️ No se pudo crear o encontrar la planilla: '{sheet_name}'.")
             
         self.active_sheet_id = id
 
         splits = name.rsplit('-')
         previous_day = str(int(splits[0])-1) + '-' + splits[1] + '-' + splits[2]
-        self._load_previous_balance(previous_day)
+        m = self._load_previous_balance(previous_day)
+        if m != 0: return m + f"\n\nPlanilla '{sheet_name}' seleccionada."
+
+        return f"Planilla '{sheet_name}' seleccionada."
 
     def _load_previous_balance(self, previous_day_name):
         """Carga el balance de la planilla del día anterior si existe."""
@@ -35,7 +37,7 @@ class SheetsService:
             if balance is None:
                 balance = 0
             self.google_sheets_service.update_single_value(self.active_sheet_id, 'B42', balance)
-            
+            return 0
         else:
-            print(f"No existe una planilla para el día anterior: '{previous_day_name}'.")
+            return (f"No existe una planilla para el día anterior: '{previous_day_name}', \npor lo tanto no se pudo cargar el balance anterior.")
         return 0

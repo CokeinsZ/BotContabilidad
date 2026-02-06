@@ -61,7 +61,7 @@ class CommandDispatcher:
         if action:
             return action(args)
         else:
-            print(f"⚠️ Comando desconocido: {cmd}")
+            return(f"⚠️ Comando desconocido: {cmd}")
 
     def list_commands(self):
         return (

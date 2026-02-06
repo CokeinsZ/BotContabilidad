@@ -13,12 +13,10 @@ class ExpensesService:
                   y el resto es la descripción del gasto.
         """
         if not self.sheets_service.active_sheet_id:
-            print("⚠️ No hay una planilla activa. Usa el comando 'hoja' para seleccionar o crear una planilla.")
-            return
+            return "⚠️ No hay una planilla activa. Usa el comando 'hoja' para seleccionar o crear una planilla."
 
         if len(args) < 2:
-            print("⚠️ Debes proporcionar el monto y la descripción del gasto.")
-            return
+            return "⚠️ Debes proporcionar el monto y la descripción del gasto."
 
         try:
             amount = float(args[0])
@@ -26,7 +24,7 @@ class ExpensesService:
 
             sheet_id = self.sheets_service.active_sheet_id
             self.sheets_service.google_sheets_service.add_expense(sheet_id, args)
-            print(f"Gasto registrado: {amount} - {description}")
+            return f"Gasto registrado: {amount} - {description}"
 
         except ValueError:
-            print("⚠️ El monto del gasto debe ser un número válido.")
+            return "⚠️ El monto del gasto debe ser un número válido."

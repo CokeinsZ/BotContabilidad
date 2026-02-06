@@ -26,7 +26,6 @@ class OllamaService:
             7. efectivo <monto> (ej: efectivo 800000)
             8. terminar_dia
             9. instrucciones
-            10. deshacer
 
             REGLAS ESTRICTAS:
             - Si el usuario dice "lucas", "mil" o "k", conviértelo a números (ej: "5 lucas" -> 5000, "20 mil" -> 20000).

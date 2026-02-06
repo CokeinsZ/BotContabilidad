@@ -13,12 +13,10 @@ class CashService:
                   y el resto es la descripción del retiro.
         """
         if not self.sheets_service.active_sheet_id:
-            print("⚠️ No hay una planilla activa. Usa el comando 'hoja' para seleccionar o crear una planilla.")
-            return
+            return "⚠️ No hay una planilla activa. Usa el comando 'hoja' para seleccionar o crear una planilla."
 
         if len(args) < 2:
-            print("⚠️ Debes proporcionar el monto y la descripción del retiro.")
-            return
+            return "⚠️ Debes proporcionar el monto y la descripción del retiro."
 
         try:
             amount = float(args[0])
@@ -26,10 +24,10 @@ class CashService:
 
             sheet_id = self.sheets_service.active_sheet_id
             self.sheets_service.google_sheets_service.add_withdraw(sheet_id, args)
-            print(f"Retiro registrado: {amount} - {description}")
+            return f"Retiro registrado: {amount} - {description}"
 
         except ValueError:
-            print("⚠️ El monto del retiro debe ser un número válido.")
+            return "⚠️ El monto del retiro debe ser un número válido."
 
     def record_balance(self, args: list):
         """
@@ -39,22 +37,20 @@ class CashService:
             args: Lista de argumentos, donde el primer elemento es el monto del saldo
         """
         if not self.sheets_service.active_sheet_id:
-            print("⚠️ No hay una planilla activa. Usa el comando 'hoja' para seleccionar o crear una planilla.")
-            return
+            return "⚠️ No hay una planilla activa. Usa el comando 'hoja' para seleccionar o crear una planilla."
 
         if len(args) < 1:
-            print("⚠️ Debes proporcionar el monto del saldo.")
-            return
+            return "⚠️ Debes proporcionar el monto del saldo."
 
         try:
             amount = float(args[0])
 
             sheet_id = self.sheets_service.active_sheet_id
             self.sheets_service.google_sheets_service.set_generated_cash(sheet_id, args)
-            print(f"Saldo registrado: {amount}")
+            return f"Saldo registrado: {amount}"
 
         except ValueError:
-            print("⚠️ El monto del saldo debe ser un número válido.")
+            return "⚠️ El monto del saldo debe ser un número válido."
         
     def record_cash(self, args: list):
         """
@@ -64,19 +60,17 @@ class CashService:
             args: Lista de argumentos, donde el primer elemento es el monto del efectivo
         """
         if not self.sheets_service.active_sheet_id:
-            print("⚠️ No hay una planilla activa. Usa el comando 'hoja' para seleccionar o crear una planilla.")
-            return
+            return "⚠️ No hay una planilla activa. Usa el comando 'hoja' para seleccionar o crear una planilla."
 
         if len(args) < 1:
-            print("⚠️ Debes proporcionar el monto del efectivo.")
-            return
+            return "⚠️ Debes proporcionar el monto del efectivo."
 
         try:
             amount = float(args[0])
 
             sheet_id = self.sheets_service.active_sheet_id
             self.sheets_service.google_sheets_service.append_cash(sheet_id, args)
-            print(f"Efectivo registrado: {amount}")
+            return f"Efectivo registrado: {amount}"
 
         except ValueError:
-            print("⚠️ El monto del efectivo debe ser un número válido.")
+            return "⚠️ El monto del efectivo debe ser un número válido."
