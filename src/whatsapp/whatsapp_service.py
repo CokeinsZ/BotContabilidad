@@ -31,7 +31,7 @@ class WhatsAppService:
             return await self._process_audio_message(message_id, remote_jid)
         else:
             message = body.get("data", {}).get("message", {}).get("conversation")
-            return self._process_text_message(message, remote_jid)
+            return await self._process_text_message(message, remote_jid)
         
     async def send_message(self, to, message):
         """
