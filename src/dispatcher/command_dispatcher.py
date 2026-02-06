@@ -57,6 +57,8 @@ class CommandDispatcher:
         cmd = parts[0]
         args = parts[1:]
 
+        print(f"Ejecutando comando: {cmd} con argumentos: {args}")
+
         action = self.commands.get(cmd)
         if action:
             return action(args)
