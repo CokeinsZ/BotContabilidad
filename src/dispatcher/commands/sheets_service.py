@@ -17,6 +17,12 @@ class SheetsService:
             return ("⚠️ Debes proporcionar el nombre de la planilla.")
 
         sheet_name = args[0]
+
+        sheet = self.drive_service.get_planilla_sheet_by_name(sheet_name)
+        if sheet:
+            self.active_sheet_id = sheet
+            return f"Planilla '{sheet_name}' seleccionada."
+
         id, name = self.drive_service.duplicate_planilla_spreadsheet(sheet_name)
         if id is None: return (f"⚠️ No se pudo crear o encontrar la planilla: '{sheet_name}'.")
             

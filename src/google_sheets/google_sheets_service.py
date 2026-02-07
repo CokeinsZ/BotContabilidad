@@ -119,11 +119,19 @@ class PlanillaSheetService:
                 range='B38:B46'
             ).execute().get('values', [[]])
 
-            planilla_cash = values[0][0]
-            total_sells = values[1][0]
-            previous_cash = values[3][0]
-            total_cash = values[7][0]
-            return planilla_cash, total_sells, previous_cash, total_cash
+            print(f"Totales obtenidos de la planilla {sheet_id}: {values}")
+
+            def get_value_at(index, default="0"):
+                if index < len(values) and values[index]:
+                    return values[index][0]
+                return default
+
+            total_expenses = get_value_at(0)
+            planilla_cash = get_value_at(1)
+            total_sells = get_value_at(2)
+            previous_cash = get_value_at(4)
+            total_cash = get_value_at(8)
+            return total_expenses, planilla_cash, total_sells, previous_cash, total_cash
         except HttpError as error:
             print(f"Ocurrió un error al obtener los totales: {error}")
             return None

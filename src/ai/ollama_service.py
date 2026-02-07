@@ -30,13 +30,15 @@ class OllamaService:
             - "retiro <monto> <descripción>" -> Sacar dinero de la caja.
             - "saldo <monto>" -> Informar cuánto dinero físico hay.
             - "efectivo <monto>" -> Dinero de ventas del día.
-            - "terminar_dia", "instrucciones", "deshacer".
+            - "terminar_dia" -> Finalizar el día y obtener resumen.
+            - "instrucciones" -> Mostrar instrucciones y ayuda de uso.
 
             REGLAS DE ORO:
             1. Si hay un NOMBRE de persona (ej: Julian, Maria, Stiven), usa 'trabajador', NO 'gasto'.
             2. Convierte "lucas", "mil", "k" en ceros (ej: 5 lucas = 5000).
-            3. Si el usuario dice "hoy", usa {fecha_hoy}.
-            4. Responde SOLO el comando.
+            3. Convierte "millones", "millón", "melones" en seis ceros (ej: 2 millones = 2000000).
+            4. Si el usuario dice "hoy", usa {fecha_hoy}.
+            5. Responde SOLO el comando.
 
             EJEMPLOS:
             Usuario: "Pon la hoja de hoy" -> hoja {fecha_hoy}

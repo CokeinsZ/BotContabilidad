@@ -14,14 +14,17 @@ class SummaryService:
         if not self.sheets_service.active_sheet_id:
             print("⚠️ No hay una planilla activa. Usa el comando 'hoja' para seleccionar o crear una planilla.")
             return
-
         sheet_id = self.sheets_service.active_sheet_id
-        planilla_cash, total_sells, previous_cash, total_cash = self.google_sheets_service.get_daily_totals(sheet_id)
+        totals = self.google_sheets_service.get_daily_totals(sheet_id)
+        if not totals:
+            return "⚠️ No se pudieron obtener los totales de la planilla."
+        total_expenses, planilla_cash, total_sells, previous_cash, total_cash = totals
 
         return f"""
             Resumen de la planilla:
+                - Gastos totales del día: {total_expenses}
                 - Efectivo del día: {planilla_cash}
                 - Ventas totales del día: {total_sells}
-                - Efectivo previo: {previous_cash}
-                - Efectivo total: {total_cash}
+                - Saldo previo: {previous_cash}
+                - Saldo total: {total_cash}
         """
