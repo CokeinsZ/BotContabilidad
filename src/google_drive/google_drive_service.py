@@ -48,14 +48,40 @@ class DriveService:
         Busca en todas las carpetas dentro de PLANILLA_SHEETS_FOLDER_ID.
         """
         try:
-            query = (
-                "mimeType='application/vnd.google-apps.spreadsheet' and "
-                f"name='{sheet_name}' and '{PLANILLA_SHEETS_FOLDER_ID}' in parents and trashed=false"
+            folder_query = (
+                "mimeType='application/vnd.google-apps.folder' and "
+                f"'{PLANILLA_SHEETS_FOLDER_ID}' in parents and trashed=false"
             )
-            res = self.service.files().list(q=query, fields="files(id,name)", pageSize=1).execute()
-            files = res.get('files', [])
-            if files:
-                return files[0]['id']
+
+            page_token = None
+            while True:
+                folder_res = self.service.files().list(
+                    q=folder_query,
+                    fields="nextPageToken, files(id,name)",
+                    pageSize=100,
+                    pageToken=page_token
+                ).execute()
+
+                folders = folder_res.get('files', [])
+                for folder in folders:
+                    folder_id = folder['id']
+                    sheet_query = (
+                        "mimeType='application/vnd.google-apps.spreadsheet' and "
+                        f"name='{sheet_name}' and '{folder_id}' in parents and trashed=false"
+                    )
+                    sheet_res = self.service.files().list(
+                        q=sheet_query,
+                        fields="files(id,name)",
+                        pageSize=1
+                    ).execute()
+                    sheet_files = sheet_res.get('files', [])
+                    if sheet_files:
+                        return sheet_files[0]['id']
+
+                page_token = folder_res.get('nextPageToken')
+                if not page_token:
+                    break
+
             return None
         except HttpError as error:
             print(f"Ocurrió un error buscando la planilla '{sheet_name}': {error}")
