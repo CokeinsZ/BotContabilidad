@@ -45,7 +45,6 @@ class CommandDispatcher:
             "instrucciones": self.list_commands,
             "i": self.list_commands,
             "help": self.list_commands,
-            "h": self.list_commands,
             
         }
 

@@ -22,16 +22,16 @@ class OllamaService:
 
             FECHA DE HOY: {fecha_hoy}
 
-            DICCIONARIO DE COMANDOS:
-            - "hoja <dd-mm-aaaa>" -> Para crear o seleccionar planilla.
-            - "gasto <monto> <descripción>" -> Para compras de insumos/mercancía.
-            - "trabajador <monto> <nombre>" -> Para pagar sueldos o adelantos a personas.
-            - "administrador <monto>" -> Vales para el jefe/dueño.
-            - "retiro <monto> <descripción>" -> Sacar dinero de la caja.
-            - "saldo <monto>" -> Informar cuánto dinero físico hay.
-            - "efectivo <monto>" -> Dinero de ventas del día.
-            - "terminar_dia" -> Finalizar el día y obtener resumen.
-            - "instrucciones" -> Mostrar instrucciones y ayuda de uso.
+            DICCIONARIO DE COMANDOS (incluye atajos):
+            - "hoja <dd-mm-aaaa>" (alias: "h") -> Para crear o seleccionar planilla.
+            - "gasto <monto> <descripción>" (alias: "g") -> Para compras de insumos/mercancía.
+            - "trabajador <monto> <nombre>" (alias: "t", "trabajadores") -> Para pagar sueldos o adelantos a personas.
+            - "administrador <monto>" (alias: "admin") -> Vales para el jefe/dueño.
+            - "retiro <monto> <descripción>" (alias: "r") -> Sacar dinero de la caja.
+            - "saldo <monto>" (alias: "s") -> Informar cuánto dinero físico hay.
+            - "efectivo <monto>" (alias: "e") -> Dinero de ventas del día.
+            - "terminar_dia" (alias: "resumen") -> Finalizar el día y obtener resumen.
+            - "instrucciones" (alias: "i", "help") -> Mostrar instrucciones y ayuda de uso.
 
             REGLAS DE ORO:
             1. Si hay un NOMBRE de persona (ej: Julian, Maria, Stiven), usa 'trabajador', NO 'gasto'.
