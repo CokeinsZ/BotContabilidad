@@ -23,7 +23,7 @@ class ExpensesService:
             description = ' '.join(args[1:])
 
             sheet_id = self.sheets_service.active_sheet_id
-            self.sheets_service.google_sheets_service.append_expense(sheet_id, args)
+            self.sheets_service.google_sheets_service.append_expense(sheet_id, [description, amount])
             return f"Gasto registrado: {amount} - {description}"
 
         except ValueError:
