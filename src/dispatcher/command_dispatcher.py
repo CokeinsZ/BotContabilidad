@@ -65,7 +65,7 @@ class CommandDispatcher:
         else:
             return(f"⚠️ Comando desconocido: {cmd}")
 
-    def list_commands(self):
+    def list_commands(self, args):
         return """
             Bienvenido al Bot de Contabilidad. \n
             Link a la carpeta: https://drive.google.com/drive/folders/1XGiZbI4M4OVpGNZT-p205fKvjJ5Zf7sC?usp=sharing \n

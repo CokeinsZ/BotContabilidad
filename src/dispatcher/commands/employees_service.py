@@ -47,7 +47,7 @@ class EmployeesService:
             amount = float(args[0])
 
             sheet_id = self.sheets_service.active_sheet_id
-            self.sheets_service.google_sheets_service.add_admin_expense(sheet_id, args)
+            self.sheets_service.google_sheets_service.add_admin_expense(sheet_id, amount)
             return f"Pago administrativo registrado: {amount}"
 
         except ValueError:

@@ -46,7 +46,7 @@ class CashService:
             amount = float(args[0])
 
             sheet_id = self.sheets_service.active_sheet_id
-            self.sheets_service.google_sheets_service.set_generated_cash(sheet_id, args)
+            self.sheets_service.google_sheets_service.set_generated_cash(sheet_id, amount)
             return f"Saldo registrado: {amount}"
 
         except ValueError:
@@ -69,7 +69,7 @@ class CashService:
             amount = float(args[0])
 
             sheet_id = self.sheets_service.active_sheet_id
-            self.sheets_service.google_sheets_service.append_cash(sheet_id, args)
+            self.sheets_service.google_sheets_service.append_cash(sheet_id, amount)
             return f"Efectivo registrado: {amount}"
 
         except ValueError:
