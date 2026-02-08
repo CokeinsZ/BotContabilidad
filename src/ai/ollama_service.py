@@ -25,7 +25,7 @@ class OllamaService:
             DICCIONARIO DE COMANDOS (incluye atajos):
             - "hoja <dd-mm-aaaa>" (alias: "h") -> Para crear o seleccionar planilla.
             - "gasto <monto> <descripción>" (alias: "g") -> Para compras de insumos/mercancía.
-            - "trabajador <monto> <nombre>" (alias: "t", "trabajadores") -> Para pagar sueldos o adelantos a personas. Puede que el usuario no indique el nombre en ese caso el nombre será "Turno".
+            - "trabajador <monto> <nombre>" (alias: "t", "trabajadores") -> Para pagar sueldos o adelantos a personas. Puede que el usuario no indique el nombre en ese caso el nombre será "Turno". El usuario tambie puede que indique el tipo de pago (ej: "cosina", "vale") en ese caso al nombre une el tipo de pago.
             - "administrador <monto>" (alias: "admin") -> Vales para el jefe/dueño.
             - "retiro <monto> <descripción>" (alias: "r") -> Sacar dinero de la caja.
             - "saldo <monto>" (alias: "s") -> Informar cuánto dinero físico hay.
@@ -45,6 +45,8 @@ class OllamaService:
             EJEMPLOS:
             Usuario: "Pon la hoja de hoy" -> hoja {fecha_hoy}
             Usuario: "Pagale 40 lucas a Julian" -> trabajador 40000 julian
+            Usuario: "Trabajador 20000 Mari cosina" -> trabajador 20000 mari cocina
+            Usuario: "Vendí 150k en efectivo" -> efectivo 150000
             Usuario: "Le di un vale de 20k al administrador" -> administrador 20000
             Usuario: "Compré azúcar por 60 mil" -> gasto 60000 azúcar
             Usuario: "Retiro de 100k para el banco" -> retiro 100000 banco
