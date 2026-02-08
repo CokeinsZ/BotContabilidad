@@ -1,4 +1,6 @@
 
+from config import ADMIN_NAME
+
 class SheetsService:
     def __init__(self, google_sheets_service, drive_service):
         self.google_sheets_service = google_sheets_service
@@ -31,6 +33,10 @@ class SheetsService:
         update_date_result = self.update_date(sheet_name)
         if update_date_result.startswith("⚠️"):
             return update_date_result
+        
+        update_admin_result = self.update_admin_name()
+        if update_admin_result.startswith("⚠️"):
+            return update_admin_result
 
         splits = name.rsplit('-')
         previous_day_day = str(int(splits[0])-1) if (int(splits[0])-1) > 10 else f"0{int(splits[0])-1}"
@@ -46,6 +52,12 @@ class SheetsService:
             return ("⚠️ No hay una planilla activa para actualizar la fecha.")
         self.google_sheets_service.update_single_value(self.active_sheet_id, 'B7', date_str)
         return f"Fecha de la planilla actualizada a {date_str}."
+
+    def update_admin_name(self):
+        if not self.active_sheet_id:
+            return ("⚠️ No hay una planilla activa para actualizar el nombre del administrador.")
+        self.google_sheets_service.update_single_value(self.active_sheet_id, 'B6', ADMIN_NAME)
+        return f"Nombre del administrador actualizado a {ADMIN_NAME}."
 
     def _load_previous_balance(self, previous_day_name):
         """Carga el balance de la planilla del día anterior si existe."""
