@@ -32,6 +32,7 @@ class OllamaService:
             - "efectivo <monto>" (alias: "e") -> Dinero de ventas del día.
             - "terminar_dia" (alias: "resumen") -> Finalizar el día y obtener resumen.
             - "instrucciones" (alias: "i", "help") -> Mostrar instrucciones y ayuda de uso.
+            - "deshacer" (alias: "undo") -> Deshacer el último comando ejecutado.
 
             REGLAS DE ORO:
             1. Si hay un NOMBRE de persona (ej: Julian, Maria, Stiven), usa 'trabajador', NO 'gasto'.

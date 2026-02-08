@@ -3,6 +3,7 @@ from dispatcher.commands.employees_service import EmployeesService
 from dispatcher.commands.expenses_service import ExpensesService
 from dispatcher.commands.sheets_service import SheetsService
 from dispatcher.commands.summary_service import SummaryService
+from dispatcher.commands.undo_service import UndoService
 
 
 class CommandDispatcher:
@@ -15,6 +16,7 @@ class CommandDispatcher:
         self.employees_service = EmployeesService(self.sheets_service, self.google_sheets_service)
         self.expenses_service = ExpensesService(self.sheets_service, self.google_sheets_service)
         self.summary_service = SummaryService(self.sheets_service, self.google_sheets_service)
+        self.undo_service = UndoService(self.google_sheets_service)
 
         self.commands = {
             "hoja": self.sheets_service.create_or_select_sheet,
@@ -45,6 +47,9 @@ class CommandDispatcher:
             "instrucciones": self.list_commands,
             "i": self.list_commands,
             "help": self.list_commands,
+
+            "deshacer": self.undo_service.undo_last_command,
+            "undo": self.undo_service.undo_last_command,
             
         }
 
@@ -60,6 +65,7 @@ class CommandDispatcher:
 
         action = self.commands.get(cmd)
         if action:
+            self.undo_service.store_last_command(cmd, args, self.sheets_service.active_sheet_id)
             return action(args)
         else:
             return(f"⚠️ Comando desconocido: {cmd}")
@@ -95,6 +101,9 @@ class CommandDispatcher:
 
             \t 2.8. Para ver las instrucciones de uso: \n
             \t\t 'instrucciones' \n
+                
+                	 2.9. Para deshacer el ultimo comando: \n
+                		 'deshacer' \n
 
             3. Al finalizar, ejecutar el comando 'terminar_dia' para ver el resumen de ventas. \n
         
