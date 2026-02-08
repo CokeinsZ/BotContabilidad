@@ -28,12 +28,24 @@ class SheetsService:
             
         self.active_sheet_id = id
 
+        update_date_result = self.update_date(sheet_name)
+        if update_date_result.startswith("⚠️"):
+            return update_date_result
+
         splits = name.rsplit('-')
-        previous_day = str(int(splits[0])-1) + '-' + splits[1] + '-' + splits[2]
-        m = self._load_previous_balance(previous_day)
+        previous_day_day = str(int(splits[0])-1) if (int(splits[0])-1) > 10 else f"0{int(splits[0])-1}"
+        previous_day_month = splits[1]
+        previous_day_year = splits[2]
+        m = self._load_previous_balance(f"{previous_day_day}-{previous_day_month}-{previous_day_year}")
         if m != 0: return m + f"\n\nPlanilla '{sheet_name}' seleccionada."
 
         return f"Planilla '{sheet_name}' seleccionada."
+
+    def update_date(self, date_str):
+        if not self.active_sheet_id:
+            return ("⚠️ No hay una planilla activa para actualizar la fecha.")
+        self.google_sheets_service.update_single_value(self.active_sheet_id, 'B7', date_str)
+        return f"Fecha de la planilla actualizada a {date_str}."
 
     def _load_previous_balance(self, previous_day_name):
         """Carga el balance de la planilla del día anterior si existe."""

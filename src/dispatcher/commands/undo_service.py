@@ -64,7 +64,8 @@ class UndoService:
 
         if success:
             command = action["command"]
+            args = " ".join(action["args"])
             self._last_action = None
-            return f"✅ Se deshizo el ultimo comando: {command}."
+            return f"✅ Se deshizo el ultimo comando: {command} - {args}."
 
         return "⚠️ No se pudo deshacer el ultimo comando."

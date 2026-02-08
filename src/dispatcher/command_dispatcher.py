@@ -20,6 +20,7 @@ class CommandDispatcher:
 
         self.commands = {
             "hoja": self.sheets_service.create_or_select_sheet,
+            "planilla": self.sheets_service.create_or_select_sheet,
             "h": self.sheets_service.create_or_select_sheet,
 
             "gasto": self.expenses_service.record_expense,
@@ -36,6 +37,7 @@ class CommandDispatcher:
             "r": self.cash_service.record_withdrawal,
 
             "saldo": self.cash_service.record_balance,
+            "saldos": self.cash_service.record_balance,
             "s": self.cash_service.record_balance,
 
             "efectivo": self.cash_service.record_cash,
@@ -76,34 +78,34 @@ class CommandDispatcher:
             Link a la carpeta: https://drive.google.com/drive/folders/1XGiZbI4M4OVpGNZT-p205fKvjJ5Zf7sC?usp=sharing \n
             Instrucciones de uso:\n
             1. Seleccionar o crear una hoja, usando el comando: \n
-            \t 'hoja <fecha>' \n
+             'hoja <fecha>' \n
             2. Ejecutar la acción que desees: \n
-            \t 2.1. Para agregar un gasto: \n
-            \t\t 'gasto <monto> <descripcion>'\n
+             2.1. Para agregar un gasto: \n
+                'gasto <monto> <descripcion>'\n
 
-            \t 2.2. Para agregar un pago a trabajadores: \n
-            \t\t 'trabajador <monto> <nombre>'\n
+             2.2. Para agregar un pago a trabajadores: \n
+                'trabajador <monto> <nombre>'\n
 
-            \t 2.3. Para agregar un vale del administrador: \n
-            \t\t 'administrador <monto>'\n
+             2.3. Para agregar un vale del administrador: \n
+                'administrador <monto>'\n
 
-            \t 2.4. Para agregar un retiro de efectivo: \n
-            \t\t 'retiro <monto> <descripcion>'\n
+             2.4. Para agregar un retiro de efectivo: \n
+                'retiro <monto> <descripcion>'\n
 
-            \t 2.5. Para registrar el saldo de efectivo: \n
-            \t\t 'saldo <monto>'\n
+             2.5. Para registrar el saldo de efectivo: \n
+                'saldo <monto>'\n
 
-            \t 2.6. Para agregar un el efectivo del dia: \n
-            \t\t 'efectivo <monto>'\n
+             2.6. Para agregar un el efectivo del dia: \n
+                'efectivo <monto>'\n
 
-            \t 2.7. Para terminar el dia, y actualizar la hoja de resumen de ventas: \n
-            \t\t 'terminar_dia' \n
+             2.7. Para terminar el dia, y actualizar la hoja de resumen de ventas: \n
+             'terminar_dia' \n
 
-            \t 2.8. Para ver las instrucciones de uso: \n
-            \t\t 'instrucciones' \n
+             2.8. Para ver las instrucciones de uso: \n
+                'instrucciones' \n
                 
-                	 2.9. Para deshacer el ultimo comando: \n
-                		 'deshacer' \n
+             2.9. Para deshacer el ultimo comando: \n
+                'deshacer' \n
 
             3. Al finalizar, ejecutar el comando 'terminar_dia' para ver el resumen de ventas. \n
         
