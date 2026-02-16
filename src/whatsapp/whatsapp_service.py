@@ -2,7 +2,8 @@ import base64
 import httpx
 
 from config import EVOLUTION_API_BASE_URL, EVOLUTION_API_INSTANCE_NAME, EVOLUTION_API_TOKEN
-from ai.ollama_service import OllamaService
+#from ai.ollama_service import OllamaService
+from ai.deepseek_service import DeepSeekService
 from ai.whisper_service import WhisperService
 
 class WhatsAppService:
@@ -15,7 +16,7 @@ class WhatsAppService:
         self.client = httpx.AsyncClient()
 
         self.whisper_service = WhisperService()
-        self.ollama_service = OllamaService()
+        self.deepseek_service = DeepSeekService()
 
     async def handle_incoming_message(self, body):
         """
@@ -75,7 +76,7 @@ class WhatsAppService:
         """
         audio_binary = await self._get_audio_binaries(message_id)
         audio_transcription = await self.whisper_service.transcribe_audio(audio_binary)
-        command = await self.ollama_service.extract_commands(audio_transcription)
+        command = await self.deepseek_service.extract_commands(audio_transcription)
 
         response = self.dispatcher.run(command)
         if response:
@@ -88,7 +89,7 @@ class WhatsAppService:
         Args:
             message: El mensaje entrante.
         """
-        command = await self.ollama_service.extract_commands(message)
+        command = await self.deepseek_service.extract_commands(message)
 
         response = self.dispatcher.run(command)
         if response:

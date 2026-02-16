@@ -19,6 +19,10 @@ EVOLUTION_API_TOKEN = os.getenv("EVOLUTION_API_TOKEN", "")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
 
+# DeepSeek API
+DEEPSEEK_API_URL = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+
 # Whisper
 WHISPER_URL = os.getenv("WHISPER_URL", "")
 
