@@ -13,9 +13,21 @@ class UndoService:
             "retiro": "withdraw",
             "r": "withdraw",
             "saldo": "balance",
+            "saldos": "balance",
             "s": "balance",
             "efectivo": "cash",
             "e": "cash",
+            "limpieza": "cleaning",
+            "aseo": "cleaning",
+            "aseos": "cleaning",
+            "l": "cleaning",
+            "alimentacion": "feeding",
+            "alimentaciones": "feeding",
+            "comida": "feeding",
+            "a": "feeding",
+            "inversiones": "investment",
+            "inversion": "investment",
+            "inv": "investment",
         }
 
     def store_last_command(self, command: str, args: list, sheet_id: str):
@@ -59,6 +71,12 @@ class UndoService:
             success = self.google_sheets_service.undo_shift_cash(sheet_id, previous_value)
         elif canonical == "balance":
             success = self.google_sheets_service.undo_generated_cash(sheet_id, previous_value)
+        elif canonical == "cleaning":
+            success = self.google_sheets_service.undo_cleaning_expense(sheet_id)
+        elif canonical == "feeding":
+            success = self.google_sheets_service.undo_feeding_expense(sheet_id)
+        elif canonical == "investment":
+            success = self.google_sheets_service.undo_investment(sheet_id)
         else:
             success = False
 

@@ -25,11 +25,14 @@ class OllamaService:
             DICCIONARIO DE COMANDOS (incluye atajos):
             - "hoja <dd-mm-aaaa>" (alias: "h") -> Para crear o seleccionar planilla.
             - "gasto <monto> <descripción>" (alias: "g") -> Para compras de insumos/mercancía.
+            - "limpieza <monto>" (alias: "aseo", "l") -> Para gastos de productos de aseo/limpieza.
+            - "alimentacion <monto>" (alias: "comida", "a") -> Para gastos de alimentación/comida del personal.
             - "trabajador <monto> <nombre>" (alias: "t", "trabajadores") -> Para pagar sueldos o adelantos a personas. Puede que el usuario no indique el nombre en ese caso el nombre será "Turno". El usuario tambie puede que indique el tipo de pago (ej: "cosina", "vale") en ese caso al nombre une el tipo de pago.
             - "administrador <monto>" (alias: "admin") -> Vales para el jefe/dueño.
             - "retiro <monto> <descripción>" (alias: "r") -> Sacar dinero de la caja.
             - "saldo <monto>" (alias: "s") -> Informar cuánto dinero físico hay.
             - "efectivo <monto>" (alias: "e") -> Dinero de ventas del día.
+            - "inversion <monto> <descripción>" (alias: "inversiones", "inv") -> Para registrar inversiones en el negocio.
             - "terminar_dia" (alias: "resumen") -> Finalizar el día y obtener resumen.
             - "instrucciones" (alias: "i", "help") -> Mostrar instrucciones y ayuda de uso.
             - "deshacer" (alias: "undo") -> Deshacer el último comando ejecutado.
@@ -50,6 +53,11 @@ class OllamaService:
             Usuario: "Le di un vale de 20k al administrador" -> administrador 20000
             Usuario: "Compré azúcar por 60 mil" -> gasto 60000 azúcar
             Usuario: "Retiro de 100k para el banco" -> retiro 100000 banco
+            Usuario: "Compré jabón y escobas por 25 lucas" -> limpieza 25000
+            Usuario: "Gasto de aseo 15 mil" -> limpieza 15000
+            Usuario: "Almuerzo para los trabajadores 30k" -> alimentacion 30000
+            Usuario: "Comida del personal 20 lucas" -> alimentacion 20000
+            Usuario: "Inversión de 500k en maquinaria" -> inversion 500000 maquinaria
 
             
             Con esa información, convierte esta transcripción en un comando: 

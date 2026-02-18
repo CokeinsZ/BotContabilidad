@@ -26,6 +26,16 @@ class CommandDispatcher:
             "gasto": self.expenses_service.record_expense,
             "g": self.expenses_service.record_expense,
 
+            "limpieza": self.expenses_service.record_cleaning_expense,
+            "aseo": self.expenses_service.record_cleaning_expense,
+            "aseos": self.expenses_service.record_cleaning_expense,
+            "l": self.expenses_service.record_cleaning_expense,
+
+            "alimentacion": self.expenses_service.record_feeding_expense,
+            "alimentaciones": self.expenses_service.record_feeding_expense,
+            "comida": self.expenses_service.record_feeding_expense,
+            "a": self.expenses_service.record_feeding_expense,
+
             "trabajador": self.employees_service.record_employee_payment,
             "trabajadores": self.employees_service.record_employee_payment,
             "t": self.employees_service.record_employee_payment,
@@ -42,6 +52,11 @@ class CommandDispatcher:
 
             "efectivo": self.cash_service.record_cash,
             "e": self.cash_service.record_cash,
+
+            "inversiones": self.cash_service.record_investment,
+            "inversion": self.cash_service.record_investment,
+            "inv": self.cash_service.record_investment,
+
 
             "terminar_dia": self.summary_service.generate_summary,
             "resumen": self.summary_service.generate_summary,
