@@ -21,6 +21,8 @@ class SummaryService:
         total_expenses, planilla_cash, total_sells, previous_cash, total_cash = totals
 
         return f"""
+            Link a la planilla: "https://docs.google.com/spreadsheets/d/{sheet_id}/edit?usp=sharing"
+
             Resumen de la planilla:
                 - Gastos totales del día: {total_expenses}
                 - Efectivo del día: {planilla_cash}

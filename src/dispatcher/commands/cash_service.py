@@ -74,3 +74,28 @@ class CashService:
 
         except ValueError:
             return "⚠️ El monto del efectivo debe ser un número válido."
+        
+    def record_investment(self, args: list):
+        """
+        Registra una inversión en la planilla activa.
+        
+        Args:
+            args: Lista de argumentos, donde el primer elemento es el monto de la inversión
+                  y el resto es la descripción de la inversión.
+        """
+        if not self.sheets_service.active_sheet_id:
+            return "⚠️ No hay una planilla activa. Usa el comando 'hoja' para seleccionar o crear una planilla."
+
+        if len(args) < 2:
+            return "⚠️ Debes proporcionar el monto y la descripción de la inversión."
+
+        try:
+            amount = float(args[0])
+            description = ' '.join(args[1:])
+
+            sheet_id = self.sheets_service.active_sheet_id
+            self.sheets_service.google_sheets_service.add_investment(sheet_id, [description, amount])
+            return f"Inversión registrada: {amount} - {description}"
+
+        except ValueError:
+            return "⚠️ El monto de la inversión debe ser un número válido." 

@@ -92,6 +92,26 @@ class PlanillaSheetService:
             print(f"Ocurrió un error al agregar el gasto administrativo: {error}")
             return False
 
+    def add_investment(self, sheet_id: str, data: list):
+        try:
+            last_row = self.service.spreadsheets().values().get(
+                spreadsheetId=sheet_id,
+                range='C127'
+            ).execute().get('values', [[]])[0][0]
+
+            result = self.service.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range=f'C{last_row}:D{last_row}',
+                valueInputOption='RAW',
+                body={'values': [data]}
+            ).execute()
+            if result.get('updatedCells'):
+                self.increase_last_investment(last_row, sheet_id)
+                return True
+        except HttpError as error:
+            print(f"Ocurrió un error al agregar la inversión: {error}")
+            return False
+
     def add_withdraw(self, sheet_id: str, data: list):
         try:
             last_row = self.service.spreadsheets().values().get(
@@ -111,6 +131,49 @@ class PlanillaSheetService:
         except HttpError as error:
             print(f"Ocurrió un error al agregar el retiro: {error}")
         return False
+
+
+    def add_cleaning_expense(self, sheet_id: str, data: int):
+        try:
+            last_row = self.service.spreadsheets().values().get(
+                spreadsheetId=sheet_id,
+                range='C128'
+            ).execute().get('values', [[]])[0][0]
+
+            result = self.service.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range=f'E{last_row}',
+                valueInputOption='RAW',
+                body={'values': [[data]]}
+            ).execute()
+            if result.get('updatedCells'):
+                self.increase_last_cleaning_expense(last_row, sheet_id)
+                return True
+        except HttpError as error:
+            print(f"Ocurrió un error al agregar el gasto de limpieza: {error}")
+            return False
+
+    def add_feeding_expense(self, sheet_id: str, data: int):
+        try:
+            last_row = self.service.spreadsheets().values().get(
+                spreadsheetId=sheet_id,
+                range='C129'
+            ).execute().get('values', [[]])[0][0]
+
+            result = self.service.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range=f'E{last_row}',
+                valueInputOption='RAW',
+                body={'values': [[data]]}
+            ).execute()
+            if result.get('updatedCells'):
+                self.increase_last_feeding_expense(last_row, sheet_id)
+                return True
+        except HttpError as error:
+            print(f"Ocurrió un error al agregar el gasto de alimentación: {error}")
+            return False
+
+
 
     def get_daily_totals(self, sheet_id: str):
         try:
@@ -305,3 +368,90 @@ class PlanillaSheetService:
     def undo_generated_cash(self, spreadsheet_id: str, previous_value):
         value = previous_value if previous_value is not None else ''
         return self.update_single_value(spreadsheet_id, 'B42', value)
+
+    def increase_last_investment(self, old_value, spreadsheet_id: str):
+        try:
+            last_row = int(old_value) + 1
+            result = self.service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range='C127',
+                valueInputOption='RAW',
+                body={'values': [[last_row]]}
+            ).execute()
+            if result.get('updatedCells'):
+                return True
+        except HttpError as error:
+            print(f"Ocurrió un error al incrementar la fila de la inversión: {error}")
+        return None
+    
+    def undo_investment(self, spreadsheet_id: str):
+        current = self.get_value(spreadsheet_id, 'C127')
+        if current is None:
+            return False
+        try:
+            target_row = int(current) - 1
+            if target_row < 29:
+                return False
+            if not self.clear_range(spreadsheet_id, f'C{target_row}:D{target_row}'):
+                return False
+            return self.update_single_value(spreadsheet_id, 'C127', target_row)
+        except ValueError:
+            return False
+        
+    def increase_last_cleaning_expense(self, old_value, spreadsheet_id: str):
+        try:
+            last_row = int(old_value) + 1
+            result = self.service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range='C128',
+                valueInputOption='RAW',
+                body={'values': [[last_row]]}
+            ).execute()
+            if result.get('updatedCells'):
+                return True
+        except HttpError as error:
+            print(f"Ocurrió un error al incrementar la fila del gasto de limpieza: {error}")
+        return None
+    
+    def undo_cleaning_expense(self, spreadsheet_id: str):
+        current = self.get_value(spreadsheet_id, 'C128')
+        if current is None:
+            return False
+        try:
+            target_row = int(current) - 1
+            if target_row < 11:
+                return False
+            if not self.clear_range(spreadsheet_id, f'E{target_row}'):
+                return False
+            return self.update_single_value(spreadsheet_id, 'C128', target_row)
+        except ValueError:
+            return False
+        
+    def increase_last_feeding_expense(self, old_value, spreadsheet_id: str):
+        try:
+            last_row = int(old_value) + 1
+            result = self.service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range='C129',
+                valueInputOption='RAW',
+                body={'values': [[last_row]]}
+            ).execute()
+            if result.get('updatedCells'):
+                return True
+        except HttpError as error:
+            print(f"Ocurrió un error al incrementar la fila del gasto de alimentación: {error}")
+        return None
+    
+    def undo_feeding_expense(self, spreadsheet_id: str):
+        current = self.get_value(spreadsheet_id, 'C129')
+        if current is None:
+            return False
+        try:
+            target_row = int(current) - 1
+            if target_row < 20:
+                return False
+            if not self.clear_range(spreadsheet_id, f'E{target_row}'):
+                return False
+            return self.update_single_value(spreadsheet_id, 'C129', target_row)
+        except ValueError:
+            return False

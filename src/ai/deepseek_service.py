@@ -1,21 +1,15 @@
-import httpx
+from openai import OpenAI
 
-from config import OLLAMA_URL, OLLAMA_MODEL
+from config import DEEPSEEK_API_URL, DEEPSEEK_API_KEY
 
-class OllamaService:
+from datetime import datetime
+
+class DeepSeekService:
     def __init__(self):
-        self.client = httpx.AsyncClient()
-        self.ollama_url = OLLAMA_URL
-        self.ollama_model = OLLAMA_MODEL
+        self.client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_API_URL)
 
     async def extract_commands(self, audio_transcription):
-        """
-        Traduce el lenguaje natural de la transcripción a comandos del Bot de Contabilidad.
-        """
-
-        from datetime import datetime
         fecha_hoy = datetime.now().strftime("%d-%m-%Y")
-
         prompt = f"""
             Eres un conversor de audio a comandos de texto. Tu salida debe ser ÚNICAMENTE el comando. 
             NO respondas con "Aquí tienes", NO uses "Comando:", NO uses negritas, NO uses puntos finales.
@@ -42,8 +36,9 @@ class OllamaService:
             2. Convierte "lucas", "mil", "k" en ceros (ej: 5 lucas = 5000).
             3. Convierte "millones", "millón", "melones" en seis ceros (ej: 2 millones = 2000000).
             4. Los alias puede que los use el usuario pero tu SOLO usas el comando principal.
-            5. Si el usuario dice "hoy", usa {fecha_hoy}.
-            6. Responde SOLO el comando.
+            5. Si el usuario especificamente dice gasto, respeta su decisión y ponlo como un gasto normal, no lo interpretes como aseo o comida o pago a trabajador, esos tienen su propio comando.
+            6. Si el usuario dice "hoy", usa {fecha_hoy}.
+            7. Responde SOLO el comando.
 
             EJEMPLOS:
             Usuario: "Pon la hoja de hoy" -> hoja {fecha_hoy}
@@ -53,6 +48,7 @@ class OllamaService:
             Usuario: "Le di un vale de 20k al administrador" -> administrador 20000
             Usuario: "Compré azúcar por 60 mil" -> gasto 60000 azúcar
             Usuario: "Retiro de 100k para el banco" -> retiro 100000 banco
+            Usuario: "Retiro de 1 millon 300 para Levapan" -> retiro 1300000 levapan
             Usuario: "Compré jabón y escobas por 25 lucas" -> limpieza 25000
             Usuario: "Gasto de aseo 15 mil" -> limpieza 15000
             Usuario: "Almuerzo para los trabajadores 30k" -> alimentacion 30000
@@ -60,29 +56,17 @@ class OllamaService:
             Usuario: "Inversión de 500k en maquinaria" -> inversion 500000 maquinaria
 
             
-            Con esa información, convierte esta transcripción en un comando: 
-            {audio_transcription}
+            Con esa información, convierte las transcripciones en un comando
         """
-        try:
-            payload = {
-                "model": self.ollama_model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.1,
-                }
-            }
 
-            response = await self.client.post(
-                self.ollama_url,
-                json=payload,
-                timeout=None
-            )
+        response = self.client.chat.completions.create(
+            model="deepseek-chat",
+            temperature=0,
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": audio_transcription},
+            ],
+            stream=False
+        )
 
-            response.raise_for_status()
-            return response.json().get("response").strip().lower()
-
-        except httpx.HTTPStatusError as e:
-            print(f"Error de la API ({e.response.status_code}): {e.response.text}")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
+        return response.choices[0].message.content.strip().lower()
