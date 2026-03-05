@@ -1,4 +1,5 @@
 
+from datetime import datetime, timedelta
 from config import ADMIN_NAME
 
 class SheetsService:
@@ -38,11 +39,15 @@ class SheetsService:
         if update_admin_result.startswith("⚠️"):
             return update_admin_result
 
-        splits = name.rsplit('-')
-        previous_day_day = str(int(splits[0])-1) if (int(splits[0])-1) > 10 else f"0{int(splits[0])-1}"
-        previous_day_month = splits[1]
-        previous_day_year = splits[2]
-        m = self._load_previous_balance(f"{previous_day_day}-{previous_day_month}-{previous_day_year}")
+        # Calcular el día anterior correctamente, manejando cambios de mes y año
+        try:
+            current_date = datetime.strptime(name, '%d-%m-%Y')
+            previous_date = current_date - timedelta(days=1)
+            previous_day_name = previous_date.strftime('%d-%m-%Y')
+        except ValueError:
+            return f"⚠️ Formato de fecha inválido en el nombre: '{name}'."
+        
+        m = self._load_previous_balance(previous_day_name)
         if m != 0: return m + f"\n\nPlanilla '{sheet_name}' seleccionada."
 
         return f"Planilla '{sheet_name}' seleccionada."
