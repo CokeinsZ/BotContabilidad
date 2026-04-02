@@ -40,7 +40,7 @@ def create_server() -> FastAPI:
     return app
 
 
-credentials = generate_credentials()
+credentials = generate_credentials(force_consent=True);
 app = create_server()
 
 @app.on_event("startup")

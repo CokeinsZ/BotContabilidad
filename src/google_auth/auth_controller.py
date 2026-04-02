@@ -40,7 +40,7 @@ async def refresh_token():
             detail=f"Error al refrescar el token: {str(e)}"
         )
     
-def generate_credentials():
-    credentials = auth_manager.get_credentials()
+def generate_credentials(force_consent: bool = True):
+    credentials = auth_manager.get_credentials(force_consent=force_consent)
     print("Autenticación exitosa. Credenciales obtenidas.")
     return credentials

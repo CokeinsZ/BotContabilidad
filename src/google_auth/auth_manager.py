@@ -47,7 +47,7 @@ class GoogleAuthManager:
         self.scopes = scopes or SCOPES
         self._credentials = None
 
-    def get_credentials(self) -> Credentials:
+    def get_credentials(self, force_consent: bool = True) -> Credentials:
         """
         Obtiene las credenciales de Google, autenticando si es necesario.
 
@@ -95,7 +95,10 @@ class GoogleAuthManager:
         )
 
         # Ejecutar el servidor local para la autenticación (puerto fijo para OAuth)
-        self._credentials = flow.run_local_server(port=8080)
+        self._credentials = flow.run_local_server(
+            port=8080,
+            prompt="consent",
+        )
         self._save_credentials()
 
         return self._credentials
