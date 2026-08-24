@@ -1,17 +1,20 @@
-from openai import OpenAI
-
-from config import DEEPSEEK_API_URL, DEEPSEEK_API_KEY
-
+"""Servicio de extracción de comandos desde lenguaje natural usando DeepSeek."""
 from datetime import datetime
 
-class DeepSeekService:
-    def __init__(self):
-        self.client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_API_URL)
+from openai import OpenAI
 
-    async def extract_commands(self, audio_transcription):
+
+class DeepSeekService:
+    """Convierte texto en lenguaje natural a comandos del bot."""
+
+    def __init__(self, api_url: str, api_key: str):
+        self._client = OpenAI(api_key=api_key, base_url=api_url)
+
+    async def extract_commands(self, text: str) -> str:
+        """Extrae el comando del bot a partir de un mensaje en lenguaje natural."""
         fecha_hoy = datetime.now().strftime("%d-%m-%Y")
         prompt = f"""
-            Eres un conversor de audio a comandos de texto. Tu salida debe ser ÚNICAMENTE el comando. 
+            Eres un conversor de audio a comandos de texto. Tu salida debe ser ÚNICAMENTE el comando.
             NO respondas con "Aquí tienes", NO uses "Comando:", NO uses negritas, NO uses puntos finales.
 
             FECHA DE HOY: {fecha_hoy}
@@ -55,18 +58,18 @@ class DeepSeekService:
             Usuario: "Comida del personal 20 lucas" -> alimentacion 20000
             Usuario: "Inversión de 500k en maquinaria" -> inversion 500000 maquinaria
 
-            
+
             Con esa información, convierte las transcripciones en un comando
         """
 
-        response = self.client.chat.completions.create(
+        response = self._client.chat.completions.create(
             model="deepseek-chat",
             temperature=0,
             messages=[
                 {"role": "system", "content": prompt},
-                {"role": "user", "content": audio_transcription},
+                {"role": "user", "content": text},
             ],
-            stream=False
+            stream=False,
         )
 
         return response.choices[0].message.content.strip().lower()

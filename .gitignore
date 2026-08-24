@@ -214,3 +214,7 @@ __marimo__/
 # Google OAuth tokens
 token.json
 client_secret.json
+
+# Base de datos SQLite local
+data/
+*.db

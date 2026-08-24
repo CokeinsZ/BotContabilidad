@@ -15,8 +15,13 @@ COPY README.md .
 # Instalar dependencias
 RUN uv sync --no-dev
 
-# Copiar código fuente
+# Copiar esquema de base de datos y código fuente
+COPY db.sql ./db.sql
 COPY src/ ./src/
+
+# Directorio persistente para la base de datos SQLite
+RUN mkdir -p /app/data
+
 # Cambiar al directorio src para ejecutar la aplicación
 WORKDIR /app/src
 # Exponer puerto para FastAPI

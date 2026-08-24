@@ -5,24 +5,24 @@ services:
     restart: unless-stopped
     ports:
       - 8000
-      - 8080
     volumes:
       # Montar client_secret.json desde el servidor
       - /home/debian/secrets/client_secret.json:/app/client_secret.json:ro
       - /home/debian/secrets/token.json:/app/token.json
+      # Persistencia de la base de datos SQLite
+      - /home/debian/secrets/data:/app/data
     environment:
       - PYTHONUNBUFFERED=1
       - EVOLUTION_API_BASE_URL=${EVOLUTION_API_BASE_URL}
       - EVOLUTION_API_INSTANCE_NAME=${EVOLUTION_API_INSTANCE_NAME}
       - EVOLUTION_API_TOKEN=${EVOLUTION_API_TOKEN}
       - WHISPER_URL=${WHISPER_URL}
-      - OLLAMA_URL=${OLLAMA_URL}
-      - OLLAMA_MODEL=${OLLAMA_MODEL}
       - DEEPSEEK_API_URL=${DEEPSEEK_API_URL}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - MASTER_FOLDER_ID=${MASTER_FOLDER_ID}
-      - PLANILLA_SHEETS_FOLDER_ID=${PLANILLA_SHEETS_FOLDER_ID}
       - PLANILLA_TEMPLATE_ID=${PLANILLA_TEMPLATE_ID}
+      - GOOGLE_OAUTH_REDIRECT_URI=${GOOGLE_OAUTH_REDIRECT_URI}
+      - DATABASE_PATH=/app/data/bot_contabilidad.db
     networks:
       - pan-de-oro
 
