@@ -1,5 +1,8 @@
 FROM python:3.14-slim
 
+# Logs de Python sin buffer (visibles en `docker logs` en tiempo real)
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 # Instalar curl y limpiar cache
@@ -18,9 +21,6 @@ RUN uv sync --no-dev
 # Copiar esquema de base de datos y código fuente
 COPY db.sql ./db.sql
 COPY src/ ./src/
-
-# Directorio persistente para la base de datos SQLite
-RUN mkdir -p /app/data
 
 # Cambiar al directorio src para ejecutar la aplicación
 WORKDIR /app/src

@@ -83,5 +83,22 @@ python src/cli.py list-admins <business_id>
 docker compose up -d --build
 ```
 
-El compose monta `client_secret.json`, `token.json` y el directorio `data/`
-(base de datos SQLite) como volúmenes persistentes.
+El compose monta un único volumen persistente: `/home/debian/secrets` del host
+en `/app/secrets` del contenedor. Ahí deben colocarse los secretos y ahí se
+generan los datos:
+
+```
+/home/debian/secrets/
+├── client_secret.json        # se copia manualmente una vez
+├── token.json                # lo genera el servidor tras /auth/login
+└── data/
+    └── bot_contabilidad.db   # lo crea la aplicación automáticamente
+```
+
+Las rutas dentro del contenedor (`/app/secrets/...`) se configuran en el
+`.env` (`GOOGLE_CLIENT_SECRET_PATH`, `GOOGLE_TOKEN_PATH`, `DATABASE_PATH`);
+el compose solo las reenvía, sin valores hardcodeados.
+
+> Nota: no existe servicio de base de datos en el compose porque SQLite es
+> una base de datos embebida (un archivo), no un servidor: con el volumen
+> persistente es suficiente.
