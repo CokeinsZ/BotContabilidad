@@ -44,7 +44,8 @@ class GoogleAuthManager:
         self._scopes = scopes or SCOPES
 
         self._credentials: Credentials | None = None
-        self._pending_states: set[str] = set()
+        # state pendiente -> code_verifier PKCE asociado (None si no usó PKCE)
+        self._pending_states: dict[str, str | None] = {}
         self._lock = threading.Lock()
         # Señaliza cuando existen credenciales válidas (tras login o carga).
         self._ready = threading.Event()
@@ -77,7 +78,9 @@ class GoogleAuthManager:
             include_granted_scopes="true",
         )
         with self._lock:
-            self._pending_states.add(state)
+            # google-auth-oauthlib usa PKCE: el code_verifier vive en el flow
+            # que generó la URL y debe reutilizarse al intercambiar el código.
+            self._pending_states[state] = getattr(flow, "code_verifier", None)
         return authorization_url
 
     def complete_authorization(
@@ -101,9 +104,13 @@ class GoogleAuthManager:
                     "El parámetro 'state' no es válido o la sesión expiró. "
                     "Inicia el proceso de autenticación de nuevo."
                 )
-            self._pending_states.discard(state)
+            code_verifier = self._pending_states.pop(state)
 
         flow = self._build_flow()
+        if code_verifier:
+            # Restaurar el verifier PKCE del flow que generó la URL,
+            # de lo contrario Google responde "invalid_grant: Missing code verifier".
+            flow.code_verifier = code_verifier
         flow.fetch_token(authorization_response=authorization_response)
 
         self._credentials = flow.credentials

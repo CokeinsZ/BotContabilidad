@@ -11,12 +11,13 @@ RUN apt-get update && apt-get install -y curl
 # Instalar uv para gestión de dependencias
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Copiar archivos de configuración
+# Copiar archivos de configuración (incluido el lockfile para builds reproducibles)
 COPY pyproject.toml .
+COPY uv.lock .
 COPY README.md .
 
-# Instalar dependencias
-RUN uv sync --no-dev
+# Instalar dependencias exactamente como en el lockfile
+RUN uv sync --no-dev --frozen
 
 # Copiar esquema de base de datos y código fuente
 COPY db.sql ./db.sql
