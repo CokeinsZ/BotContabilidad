@@ -1,4 +1,5 @@
 """Servicio de extracción de comandos desde lenguaje natural usando DeepSeek."""
+import asyncio
 from datetime import datetime
 
 from openai import OpenAI
@@ -62,7 +63,10 @@ class DeepSeekService:
             Con esa información, convierte las transcripciones en un comando
         """
 
-        response = self._client.chat.completions.create(
+        # El SDK de OpenAI es síncrono: se ejecuta en un hilo aparte para
+        # no bloquear el event loop mientras se espera la respuesta.
+        response = await asyncio.to_thread(
+            self._client.chat.completions.create,
             model="deepseek-chat",
             temperature=0,
             messages=[

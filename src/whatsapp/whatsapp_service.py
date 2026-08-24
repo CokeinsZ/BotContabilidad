@@ -35,9 +35,15 @@ class WhatsAppService:
         """Procesa un webhook `messages-upsert` de Evolution API."""
         message = IncomingMessage.from_webhook(body)
 
-        # Solo chats individuales (se ignoran grupos, estados, canales, etc.).
-        if not message.is_individual_chat:
+        reason = message.ignore_reason
+        if reason:
+            print(f"Mensaje ignorado: {reason}")
             return
+
+        print(
+            f"Mensaje recibido de {message.phone_number} "
+            f"({'audio' if message.is_audio else 'texto'})"
+        )
 
         if message.is_audio:
             command = await self._audio_to_command(message.key.id)
@@ -45,7 +51,10 @@ class WhatsAppService:
             command = await self._text_to_command(message.text)
 
         if not command:
+            print(f"No se pudo extraer un comando del mensaje de {message.phone_number}")
             return
+
+        print(f"Comando extraído: '{command}' (de {message.phone_number})")
 
         # Las llamadas a Google son síncronas: se ejecutan en un hilo aparte
         # para no bloquear el event loop del servidor.

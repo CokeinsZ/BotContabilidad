@@ -32,8 +32,8 @@ src/
 3. Registrar el primer business y su administrador:
 
 ```bash
-python src/cli.py add-business "Mi Negocio" <id_carpeta_drive_planillas>
-python src/cli.py add-admin 1 "Nombre Admin" 573001234567
+uv run python src/cli.py add-business "Mi Negocio" <id_carpeta_drive_planillas>
+uv run python src/cli.py add-admin 1 "Nombre Admin" 573001234567
 ```
 
 4. Levantar el servidor:
@@ -71,10 +71,16 @@ uv run --directory src uvicorn main:app --host 0.0.0.0 --port 8000
 ## CLI
 
 ```bash
-python src/cli.py add-business <nombre> <sheets_folder_id>
-python src/cli.py add-admin <business_id> <nombre> <telefono>
-python src/cli.py list-businesses
-python src/cli.py list-admins <business_id>
+uv run python src/cli.py add-business <nombre> <sheets_folder_id>
+uv run python src/cli.py add-admin <business_id> <nombre> <telefono>
+uv run python src/cli.py list-businesses
+uv run python src/cli.py list-admins <business_id>
+```
+
+Dentro del contenedor Docker:
+
+```bash
+docker compose exec bot-contabilidad uv run python cli.py list-businesses
 ```
 
 ## Despliegue con Docker
