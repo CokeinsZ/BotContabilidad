@@ -28,4 +28,4 @@ WORKDIR /app/src
 EXPOSE 8000
 
 # Comando para ejecutar la aplicación
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
