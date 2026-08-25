@@ -34,7 +34,8 @@ class AccountingService:
         if business_context is None:
             return (
                 "⚠️ Tu número no está registrado como administrador de ningún "
-                "negocio. Contacta al proveedor del bot para darte de alta."
+                f"negocio.\n\nTu identificador es: {phone_number}\n"
+                "Compártelo con el proveedor del bot para darte de alta."
             )
 
         if self._sheets.service is None or self._drive.service is None:

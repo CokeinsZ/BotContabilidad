@@ -58,6 +58,30 @@ uv run --directory src uvicorn main:app --host 0.0.0.0 --port 8000
 - Cada administrador tiene su propia sesión (planilla activa y deshacer
   independientes).
 
+### Identificadores LID de WhatsApp
+
+WhatsApp está migrando a identificadores privados (`@lid`); en ese caso el
+número telefónico real **no llega en el webhook**. El bot resuelve así el
+identificador del remitente (por prioridad):
+
+1. `key.senderPn` (número real, cuando Evolution lo incluye).
+2. La parte numérica del `remoteJid` (el número real si es `@s.whatsapp.net`,
+   o el LID si es `@lid`).
+
+Cuando alguien no registrado escribe al bot, este responde con su propio
+identificador para poder darlo de alta directamente:
+
+```
+⚠️ Tu número no está registrado...
+Tu identificador es: 4042000441346
+```
+
+Ese identificador (número real o LID) es el que se registra:
+
+```bash
+uv run python src/cli.py add-admin <business_id> "Stiven Carvajal" 4042000441346
+```
+
 ## Endpoints
 
 | Método | Ruta | Descripción |
