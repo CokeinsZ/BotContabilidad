@@ -33,6 +33,7 @@ class WhatsAppService:
 
     async def handle_incoming_message(self, body: dict) -> None:
         """Procesa un webhook `messages-upsert` de Evolution API."""
+        print(body)
         message = IncomingMessage.from_webhook(body)
 
         reason = message.ignore_reason
