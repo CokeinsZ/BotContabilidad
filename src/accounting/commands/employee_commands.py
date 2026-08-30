@@ -245,7 +245,18 @@ class NominaCommand(Command):
         if len(args) < 1:
             return "⚠️ Debes proporcionar el nombre del trabajador."
 
-        worker_name = " ".join(args)
+        # Parsear: nomina <monto> <nombre>
+        # El monto es opcional; si se da, se registra como préstamo en la planilla diaria
+        if len(args) >= 2:
+            try:
+                amount = self.parse_amount(args[0])
+                worker_name = " ".join(args[1:])
+            except ValueError:
+                return "⚠️ El monto debe ser un número válido."
+        else:
+            amount = None
+            worker_name = args[0]
+
         folder_id = ctx.business.workers_folder_id
         if not folder_id:
             return (
@@ -258,18 +269,19 @@ class NominaCommand(Command):
         if not candidates:
             return f"⚠️ No se encontró archivo para el trabajador '{worker_name}'."
 
-        # Si hay varios, pedir desambiguación (reutiliza la lógica existente)
+        # Si hay varios, pedir desambiguación
         if len(candidates) > 1:
-            return self._ask_for_selection_nomina(ctx, worker_name, candidates)
+            # Guardar el monto para la resolución
+            return self._ask_for_selection_nomina(ctx, worker_name, candidates, amount)
 
         file_id, file_name = candidates[0]
-        return self._process_nomina(ctx, file_id, file_name, worker_name)
+        return self._process_nomina(ctx, file_id, file_name, worker_name, amount)
 
     def _find_worker_files(
         self, ctx: CommandContext, folder_id: str, worker_name: str
     ) -> list[tuple[str, str]]:
         """Archivos de la carpeta cuyo nombre contiene el nombre buscado."""
-        query = worker_name.lower()
+        query = worker_name.lower().replace("é", "e").replace("á", "a").replace("í", "i").replace("ó", "o").replace("ú", "u").strip()
         return [
             (file_id, name)
             for file_id, name in ctx.drive.list_files_in_folder(folder_id)
@@ -277,22 +289,47 @@ class NominaCommand(Command):
         ]
 
     def _process_nomina(
-        self, ctx: CommandContext, file_id: str, file_name: str, worker_name: str
+        self, ctx: CommandContext, file_id: str, file_name: str, worker_name: str,
+        amount: float | None = None
     ) -> CommandResult:
         """Ejecuta los 3 pasos de la nómina."""
         today = datetime.now().strftime("%d-%m-%Y")
         sheet_url = f"https://docs.google.com/spreadsheets/d/{file_id}/edit?usp=sharing"
 
+        messages = []
+
+        # 0. Si se pasó monto, registrarlo como préstamo en la planilla diaria
+        if amount is not None:
+            from accounting.session_manager import UndoStep
+            sheet_id = ctx.session.active_sheet_id
+            region = ctx.sheets.layout.worker_loan_region
+
+            if not ctx.sheets.append_to_region(sheet_id, region, [worker_name, amount]):
+                return ["⚠️ No se pudo registrar el pago en la planilla diaria."]
+
+            # Agregar paso de undo para la planilla
+            if ctx.session.undo_snapshot is not None:
+                ctx.session.undo_snapshot.steps.append(
+                    UndoStep(sheet_id=sheet_id, region=region)
+                )
+            else:
+                ctx.session.undo_snapshot = UndoSnapshot.single(
+                    description=f"nomina {worker_name} {amount}",
+                    sheet_id=sheet_id,
+                    region=region,
+                )
+
+            messages.append(f"Pago registrado en planilla: {amount} - {worker_name}")
+
         # 1. Leer suma de préstamos (B30) y enviar mensaje
         loan_sum = ctx.sheets.get_worker_loan_sum(file_id) or "0"
-        message = (
+        messages.append(
             f"📋 Nómina de {worker_name}\n"
             f"Suma de préstamos: {loan_sum}\n"
             f"Archivo: {sheet_url}"
         )
 
         # 2. Duplicar hoja principal, borrar filas 1-9, renombrar a fecha de hoy
-        # La hoja principal es la llamada "principal"
         main_sheet_id = ""
         spreadsheet = ctx.sheets.service.spreadsheets().get(
             spreadsheetId=file_id, fields="sheets(properties(sheetId,title))"
@@ -315,7 +352,7 @@ class NominaCommand(Command):
         if not ctx.sheets.delete_rows(file_id, new_sheet_id, 1, 10):
             return ["⚠️ No se pudieron borrar las filas 1-9 en la hoja de nómina."]
 
-        # 3. Limpiar hoja principal: A13:A28 vacíos, B13:B28 ceros, C123=13
+        # 3. Limpiar hoja principal: A13:A28 vacíos, B13:B28 ceros, C13:C28 vacíos, C123=13
         sheet_prefix = "principal!"  # Asumiendo que la hoja principal se llama "principal"
 
         # A13:A28 -> vacíos (strings vacíos)
@@ -327,33 +364,32 @@ class NominaCommand(Command):
         # C123 = 13
         ctx.sheets.reset_counter(file_id, "C123", 13)
 
-        return [
-            message,
-            f"✅ Nómina procesada: hoja '{today}' creada y hoja principal limpiada.",
-        ]
+        messages.append(f"✅ Nómina procesada: hoja '{today}' creada y hoja principal limpiada.")
+        return messages
 
     def _ask_for_selection_nomina(
-        self, ctx: CommandContext, worker_name: str, candidates: list[tuple[str, str]]
+        self, ctx: CommandContext, worker_name: str, candidates: list[tuple[str, str]],
+        amount: float | None = None
     ) -> str:
         """Pide al usuario que elija cuál archivo usar para la nómina."""
         ctx.session.pending_selection = PendingSelection(
             description=f"nomina {worker_name}",
-            resolver=self._make_selection_resolver_nomina(worker_name, candidates),
+            resolver=self._make_selection_resolver_nomina(worker_name, candidates, amount),
         )
         return self._build_menu_nomina(worker_name, candidates)
 
     def _make_selection_resolver_nomina(
-        self, worker_name: str, candidates: list[tuple[str, str]]
+        self, worker_name: str, candidates: list[tuple[str, str]], amount: float | None = None
     ):
         def resolve(ctx: CommandContext, text: str) -> CommandResult:
             option = int(text)
             if 1 <= option <= len(candidates):
                 file_id, file_name = candidates[option - 1]
-                return self._process_nomina(ctx, file_id, file_name, worker_name)
+                return self._process_nomina(ctx, file_id, file_name, worker_name, amount)
             # Opción inválida
             ctx.session.pending_selection = PendingSelection(
                 description=f"nomina {worker_name}",
-                resolver=self._make_selection_resolver_nomina(worker_name, candidates),
+                resolver=self._make_selection_resolver_nomina(worker_name, candidates, amount),
             )
             return [
                 f"⚠️ Opción inválida: {option}.",
