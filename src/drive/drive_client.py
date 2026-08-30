@@ -241,9 +241,11 @@ class DriveClient:
     # ------------------------------------------------------------------
     @staticmethod
     def month_folder_name_for(date_str: str) -> str | None:
-        """Convierte `dd-mm-yyyy` en el nombre de carpeta `mes-aaaa`."""
+        """Convierte `dd-mm-yyyy` o `dd-mm-yyyy-N` en el nombre de carpeta `mes-aaaa`."""
+        # Extraer la fecha base: los primeros 10 caracteres (dd-mm-yyyy)
+        base_date = date_str[:10]
         try:
-            date = datetime.strptime(date_str, "%d-%m-%Y")
+            date = datetime.strptime(base_date, "%d-%m-%Y")
         except ValueError:
             return None
         return f"{_MONTH_NAMES[date.month - 1]}-{date.year}"
