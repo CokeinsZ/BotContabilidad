@@ -292,16 +292,19 @@ class NominaCommand(Command):
         )
 
         # 2. Duplicar hoja principal, borrar filas 1-9, renombrar a fecha de hoy
-        # La hoja principal es la primera (índice 0)
-        main_sheet_id = ctx.sheets.get_sheet_id_by_name(file_id, file_name)
-        if main_sheet_id is None:
-            # Si no se encuentra por nombre exacto, tomar la primera hoja
-            spreadsheet = ctx.sheets.service.spreadsheets().get(
-                spreadsheetId=file_id, fields="sheets(properties(sheetId,title))"
-            ).execute()
-            sheets_props = spreadsheet.get("sheets", [])
-            if not sheets_props:
-                return [f"⚠️ No se encontraron hojas en el archivo de '{worker_name}'."]
+        # La hoja principal es la llamada "principal"
+        main_sheet_id = ""
+        spreadsheet = ctx.sheets.service.spreadsheets().get(
+            spreadsheetId=file_id, fields="sheets(properties(sheetId,title))"
+        ).execute()
+        sheets_props = spreadsheet.get("sheets", [])
+        if not sheets_props:
+            return [f"⚠️ No se encontraron hojas en el archivo de '{worker_name}'."]
+        for sheet in sheets_props:
+            if sheet["properties"]["title"].lower() == "principal":
+                main_sheet_id = sheet["properties"]["sheetId"]
+                break
+        if not main_sheet_id:
             main_sheet_id = sheets_props[0]["properties"]["sheetId"]
 
         new_sheet_id = ctx.sheets.duplicate_sheet(file_id, main_sheet_id, today)
@@ -313,13 +316,14 @@ class NominaCommand(Command):
             return ["⚠️ No se pudieron borrar las filas 1-9 en la hoja de nómina."]
 
         # 3. Limpiar hoja principal: A13:A28 vacíos, B13:B28 ceros, C123=13
-        # get_sheet_name_by_id no es crítico, usamos file_name como fallback
-        _ = ctx.sheets.get_sheet_id_by_name(file_id, file_name)  # validación
+        sheet_prefix = "principal!"  # Asumiendo que la hoja principal se llama "principal"
 
         # A13:A28 -> vacíos (strings vacíos)
-        ctx.sheets.clear_range_a1(file_id, "A13:A28", "")
+        ctx.sheets.clear_range_a1(file_id, f"{sheet_prefix}A13:A28", "")
         # B13:B28 -> ceros
-        ctx.sheets.clear_range_a1(file_id, "B13:B28", 0)
+        ctx.sheets.clear_range_a1(file_id, f"{sheet_prefix}B13:B28", 0)
+        # C13:C28 -> vacíos (strings vacíos)
+        ctx.sheets.clear_range_a1(file_id, f"{sheet_prefix}C13:C28", "")
         # C123 = 13
         ctx.sheets.reset_counter(file_id, "C123", 13)
 
