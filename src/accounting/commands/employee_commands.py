@@ -223,17 +223,18 @@ class AdminPaymentCommand(RegionEntryCommand):
 
 
 class NominaCommand(Command):
-    """`nomina <nombre>`: cierra el período de un trabajador (nómina).
+    """`nomina <monto> <nombre>`: paga y cierra el período de un trabajador.
 
-    1. Envía mensaje con: nombre, suma de préstamos (B30) y URL al archivo.
-    2. En el archivo del trabajador:
-       - Duplica la hoja principal (la primera hoja).
-       - En la copia: borra filas 1-9 (mantiene solo los vales/préstamos).
-       - Nombra la nueva hoja con la fecha de hoy (dd-mm-yyyy).
-    3. Limpia la hoja principal:
-       - Columna A (filas 13-28): strings vacíos.
-       - Columna B (filas 13-28): ceros.
-       - Reinicia contador C123 a 13.
+    1. Registra el monto en la planilla diaria (región de trabajadores).
+    2. Cierra el período del trabajador en su archivo (`close_worker_period`):
+       - Envía mensaje con: nombre, suma de préstamos (B30) y URL al archivo.
+       - Duplica la hoja "principal", borra filas 1-9 y la nombra con la fecha
+         de hoy (dd-mm-yyyy, fecha de ejecución).
+       - Limpia la hoja principal: A13:A28 y C13:C28 vacíos, B13:B28 ceros,
+         y reinicia el contador C123 a 13.
+
+    El proceso de cierre también es reutilizado por `retiro` cuando la
+    descripción es `nomina <nombre>`.
     """
 
     name = "nomina"
@@ -242,40 +243,58 @@ class NominaCommand(Command):
     def execute(self, ctx: CommandContext, args: list[str]) -> CommandResult:
         if error := self.require_active_sheet(ctx):
             return error
-        if len(args) < 1:
-            return "⚠️ Debes proporcionar el nombre del trabajador."
+        if len(args) < 2:
+            return "⚠️ Formato: nomina <monto> <nombre>."
 
-        # Parsear: nomina <monto> <nombre>
-        # El monto es opcional; si se da, se registra como préstamo en la planilla diaria
-        if len(args) >= 2:
-            try:
-                amount = self.parse_amount(args[0])
-                worker_name = " ".join(args[1:])
-            except ValueError:
-                return "⚠️ El monto debe ser un número válido."
-        else:
-            amount = None
-            worker_name = args[0]
+        try:
+            amount = self.parse_amount(args[0])
+        except ValueError:
+            return "⚠️ El monto debe ser un número válido."
+        worker_name = " ".join(args[1:])
 
+        # 1. Registrar el pago en la planilla diaria (región de trabajadores).
+        sheet_id = ctx.session.active_sheet_id
+        region = ctx.sheets.layout.worker_loan_region
+        if not ctx.sheets.append_to_region(sheet_id, region, [worker_name, amount]):
+            return "⚠️ No se pudo registrar el pago en la planilla diaria."
+
+        ctx.session.undo_snapshot = UndoSnapshot.single(
+            description=" ".join([self.name, *args]),
+            sheet_id=sheet_id,
+            region=region,
+        )
+
+        messages = [f"Pago registrado en planilla: {amount} - {worker_name}"]
+
+        # 2. Cerrar el período del trabajador en su archivo.
+        messages.extend(self.close_worker_period(ctx, worker_name))
+        return messages
+
+    # ------------------------------------------------------------------
+    # Cierre del período (reutilizable por otros comandos, ej: retiro)
+    # ------------------------------------------------------------------
+    def close_worker_period(self, ctx: CommandContext, worker_name: str) -> list[str]:
+        """Busca el archivo del trabajador y cierra su período.
+
+        Maneja la desambiguación (menú numerado) cuando hay varios archivos
+        con nombre similar.
+        """
         folder_id = ctx.business.workers_folder_id
         if not folder_id:
-            return (
+            return [
                 "⚠️ Este negocio no tiene configurada la carpeta de trabajadores "
                 "(workers_folder_id)."
-            )
+            ]
 
-        # Buscar archivo del trabajador (coincidencia exacta o similar único)
         candidates = self._find_worker_files(ctx, folder_id, worker_name)
         if not candidates:
-            return f"⚠️ No se encontró archivo para el trabajador '{worker_name}'."
+            return [f"⚠️ No se encontró archivo para el trabajador '{worker_name}'."]
 
-        # Si hay varios, pedir desambiguación
         if len(candidates) > 1:
-            # Guardar el monto para la resolución
-            return self._ask_for_selection_nomina(ctx, worker_name, candidates, amount)
+            return [self._ask_for_selection_nomina(ctx, worker_name, candidates)]
 
         file_id, file_name = candidates[0]
-        return self._process_nomina(ctx, file_id, file_name, worker_name, amount)
+        return self._process_nomina(ctx, file_id, file_name, worker_name)
 
     def _find_worker_files(
         self, ctx: CommandContext, folder_id: str, worker_name: str
@@ -289,37 +308,13 @@ class NominaCommand(Command):
         ]
 
     def _process_nomina(
-        self, ctx: CommandContext, file_id: str, file_name: str, worker_name: str,
-        amount: float | None = None
+        self, ctx: CommandContext, file_id: str, file_name: str, worker_name: str
     ) -> CommandResult:
-        """Ejecuta los 3 pasos de la nómina."""
+        """Ejecuta el cierre del período en el archivo del trabajador."""
         today = datetime.now().strftime("%d-%m-%Y")
         sheet_url = f"https://docs.google.com/spreadsheets/d/{file_id}/edit?usp=sharing"
 
         messages = []
-
-        # 0. Si se pasó monto, registrarlo como préstamo en la planilla diaria
-        if amount is not None:
-            from accounting.session_manager import UndoStep
-            sheet_id = ctx.session.active_sheet_id
-            region = ctx.sheets.layout.worker_loan_region
-
-            if not ctx.sheets.append_to_region(sheet_id, region, [worker_name, amount]):
-                return ["⚠️ No se pudo registrar el pago en la planilla diaria."]
-
-            # Agregar paso de undo para la planilla
-            if ctx.session.undo_snapshot is not None:
-                ctx.session.undo_snapshot.steps.append(
-                    UndoStep(sheet_id=sheet_id, region=region)
-                )
-            else:
-                ctx.session.undo_snapshot = UndoSnapshot.single(
-                    description=f"nomina {worker_name} {amount}",
-                    sheet_id=sheet_id,
-                    region=region,
-                )
-
-            messages.append(f"Pago registrado en planilla: {amount} - {worker_name}")
 
         # 1. Leer suma de préstamos (B30) y enviar mensaje
         loan_sum = ctx.sheets.get_worker_loan_sum(file_id) or "0"
@@ -368,28 +363,27 @@ class NominaCommand(Command):
         return messages
 
     def _ask_for_selection_nomina(
-        self, ctx: CommandContext, worker_name: str, candidates: list[tuple[str, str]],
-        amount: float | None = None
+        self, ctx: CommandContext, worker_name: str, candidates: list[tuple[str, str]]
     ) -> str:
         """Pide al usuario que elija cuál archivo usar para la nómina."""
         ctx.session.pending_selection = PendingSelection(
             description=f"nomina {worker_name}",
-            resolver=self._make_selection_resolver_nomina(worker_name, candidates, amount),
+            resolver=self._make_selection_resolver_nomina(worker_name, candidates),
         )
         return self._build_menu_nomina(worker_name, candidates)
 
     def _make_selection_resolver_nomina(
-        self, worker_name: str, candidates: list[tuple[str, str]], amount: float | None = None
+        self, worker_name: str, candidates: list[tuple[str, str]]
     ):
         def resolve(ctx: CommandContext, text: str) -> CommandResult:
             option = int(text)
             if 1 <= option <= len(candidates):
                 file_id, file_name = candidates[option - 1]
-                return self._process_nomina(ctx, file_id, file_name, worker_name, amount)
+                return self._process_nomina(ctx, file_id, file_name, worker_name)
             # Opción inválida
             ctx.session.pending_selection = PendingSelection(
                 description=f"nomina {worker_name}",
-                resolver=self._make_selection_resolver_nomina(worker_name, candidates, amount),
+                resolver=self._make_selection_resolver_nomina(worker_name, candidates),
             )
             return [
                 f"⚠️ Opción inválida: {option}.",

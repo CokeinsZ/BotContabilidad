@@ -1,14 +1,26 @@
 """Comandos de manejo de efectivo: retiros, saldo, efectivo e inversiones."""
 from abc import abstractmethod
-from typing import ClassVar
+from typing import ClassVar, Optional, TYPE_CHECKING
 
 from accounting.commands.base import Command, CommandContext
 from accounting.commands.region_entry import RegionEntryCommand
-from accounting.session_manager import UndoSnapshot
+from accounting.session_manager import CommandResult, UndoSnapshot
+
+if TYPE_CHECKING:
+    from accounting.commands.employee_commands import NominaCommand
 
 
 class WithdrawalCommand(RegionEntryCommand):
-    """`retiro <monto> <descripción>`: sacar dinero de la caja."""
+    """`retiro <monto> <descripción>`: sacar dinero de la caja.
+
+    Caso especial: si la descripción es `nomina <nombre>`, además de
+    registrar el retiro en la planilla, se cierra el período del trabajador
+    en su archivo (mensaje con suma de préstamos, subhoja archivada y
+    limpieza de la hoja principal) delegando a `NominaCommand`.
+
+    Esto existe porque los pagos de nómina no siempre salen del efectivo del
+    día (a veces no alcanza la caja), así que se registran como retiros.
+    """
 
     name = "retiro"
     aliases = ("r",)
@@ -16,6 +28,9 @@ class WithdrawalCommand(RegionEntryCommand):
     success_label = "Retiro registrado"
     missing_args_message = "⚠️ Debes proporcionar el monto y la descripción del retiro."
     invalid_amount_message = "⚠️ El monto del retiro debe ser un número válido."
+
+    def __init__(self, nomina_command: Optional["NominaCommand"] = None):
+        self._nomina_command = nomina_command
 
     def validate_args(self, args: list[str]) -> str | None:
         return self.missing_args_message if len(args) < 2 else None
@@ -25,6 +40,38 @@ class WithdrawalCommand(RegionEntryCommand):
         description = " ".join(args[1:])
         # La región de retiros usa las columnas C:E con la D vacía.
         return [description, "", amount]
+
+    def execute(self, ctx: CommandContext, args: list[str]) -> CommandResult:
+        # 1. Registrar el retiro en la planilla (comportamiento normal).
+        result = super().execute(ctx, args)
+        if result.startswith("⚠️"):
+            return result
+
+        messages = [result]
+
+        # 2. Si la descripción es "nomina <nombre>", cerrar el período del
+        #    trabajador en su archivo individual.
+        worker_name = self._nomina_worker_name(args)
+        if worker_name is not None and self._nomina_command is not None:
+            messages.extend(self._nomina_command.close_worker_period(ctx, worker_name))
+
+        return messages
+
+    @staticmethod
+    def _nomina_worker_name(args: list[str]) -> str | None:
+        """Extrae el nombre del trabajador si la descripción es 'nomina <nombre>'.
+
+        args[0] es el monto; la descripción son los argumentos restantes.
+        Tolera variantes como "nomina de peter" / "nómina del trabajador".
+        """
+        tokens = " ".join(args[1:]).split()
+        if len(tokens) >= 2 and tokens[0].lower() in ("nomina", "nómina"):
+            name_tokens = tokens[1:]
+            if name_tokens and name_tokens[0].lower() in ("de", "del"):
+                name_tokens = name_tokens[1:]
+            if name_tokens:
+                return " ".join(name_tokens)
+        return None
 
 
 class InvestmentCommand(RegionEntryCommand):

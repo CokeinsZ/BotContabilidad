@@ -27,6 +27,7 @@ from accounting.commands.help_command import HelpCommand
 
 def build_default_commands() -> list[Command]:
     """Construye la lista de comandos disponibles del bot."""
+    nomina_command = NominaCommand()
     return [
         SelectSheetCommand(),
         *build_additional_sheet_commands(),
@@ -34,9 +35,9 @@ def build_default_commands() -> list[Command]:
         CleaningExpenseCommand(),
         FeedingExpenseCommand(),
         WorkerLoanCommand(),
-        NominaCommand(),
+        nomina_command,
         AdminPaymentCommand(),
-        WithdrawalCommand(),
+        WithdrawalCommand(nomina_command),
         BalanceCommand(),
         CashCommand(),
         InvestmentCommand(),

@@ -71,7 +71,10 @@ class DeepSeekService:
             Usuario: "Almuerzo para los trabajadores 30k" -> alimentacion 30000
             Usuario: "Comida del personal 20 lucas" -> alimentacion 20000
             Usuario: "Inversión de 500k en maquinaria" -> inversion 500000 maquinaria
-            Usuario: "Retiro nomina de 500000" -> retiro 500000 nomina
+            Usuario: "Págale la nómina de 200 mil a Peter" -> nomina 200000 peter
+            Usuario: "Nomina de Maria por 150 mil" -> nomina 150000 maria
+            Usuario: "Retiro de 200 mil para nómina de Peter" -> retiro 200000 nomina peter
+            Usuario: "Retiro de 500 mil para la nómina de María" -> retiro 500000 nomina maria
 
             Con esa información, convierte las transcripciones en un comando
         """

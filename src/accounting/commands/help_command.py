@@ -32,6 +32,10 @@ class HelpCommand(Command):
 
              2.4. Para agregar un retiro de efectivo: \n
                 'retiro <monto> <descripcion>'\n
+                Si la descripcion es 'nomina <nombre>', además cierra el período del trabajador.\n
+
+             2.4.1. Para pagar la nómina de un trabajador (cierra sus préstamos): \n
+                'nomina <monto> <nombre>'\n
 
              2.5. Para registrar el saldo de efectivo: \n
                 'saldo <monto>'\n
