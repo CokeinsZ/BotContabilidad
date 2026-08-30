@@ -231,16 +231,24 @@ class SheetsClient:
             return False
 
     def clear_range_a1(self, spreadsheet_id: str, range_a1: str, fill_value: str | int = "") -> bool:
-        """Limpia un rango A1 específico escribiendo fill_value."""
+        """Limpia un rango A1 específico escribiendo fill_value.
+
+        Soporta notación con nombre de hoja: "'Hoja 1'!A1:B2" o "A1:B2".
+        """
         try:
-            # Parsear el rango A1 para saber dimensiones
-            # Formato: "A13:A28" o "A13:B28"
-            if ":" not in range_a1:
+            # Separar nombre de hoja si existe: "'Hoja'!A1:B2" -> sheet_part, cell_range
+            if "!" in range_a1:
+                _, cell_range = range_a1.split("!", 1)
+            else:
+                cell_range = range_a1
+
+            # Parsear el rango de celdas para saber dimensiones
+            if ":" not in cell_range:
                 # Celda simple
                 fill_values = [[fill_value]]
             else:
-                start, end = range_a1.split(":")
-                # Parsear coordenadas
+                start, end = cell_range.split(":")
+                # Parsear coordenadas (solo letras + números, sin nombre de hoja)
                 def parse_cell(cell):
                     col = ""
                     row = ""
@@ -261,9 +269,14 @@ class SheetsClient:
                     return num
                 cols = col_to_num(end_col) - col_to_num(start_col) + 1
                 fill_values = [[fill_value] * cols for _ in range(rows)]
+
+            # Usar el range_a1 original (con nombre de hoja si lo tenía) para la escritura
             return self.set_values(spreadsheet_id, {range_a1: fill_values})
         except HttpError as error:
             print(f"Error limpiando rango {range_a1}: {error}")
+            return False
+        except Exception as error:
+            print(f"Error parseando rango {range_a1}: {error}")
             return False
 
     def reset_counter(self, spreadsheet_id: str, counter_cell: str, value: int) -> bool:
