@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS businesses (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
     sheets_folder_id TEXT NOT NULL,
+    workers_folder_id TEXT,
     state TEXT NOT NULL DEFAULT 'active'
         CHECK (state IN ('active', 'inactive')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

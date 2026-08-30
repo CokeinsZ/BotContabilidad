@@ -18,11 +18,13 @@ class HelpCommand(Command):
             Instrucciones de uso:\n
             1. Seleccionar o crear una hoja, usando el comando: \n
              'hoja <fecha>' \n
+             1.1. Para crear una planilla adicional del mismo día: \n
+                'segunda planilla', 'tercera planilla', '2 planilla', ...\n
             2. Ejecutar la acción que desees: \n
              2.1. Para agregar un gasto: \n
                 'gasto <monto> <descripcion>'\n
 
-             2.2. Para agregar un pago a trabajadores: \n
+             2.2. Para registrar un préstamo a un trabajador: \n
                 'trabajador <monto> <nombre>'\n
 
              2.3. Para agregar un vale del administrador: \n

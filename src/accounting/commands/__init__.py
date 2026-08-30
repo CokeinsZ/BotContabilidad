@@ -1,6 +1,9 @@
 """Comandos del bot de contabilidad."""
 from accounting.commands.base import Command, CommandContext
-from accounting.commands.sheet_commands import SelectSheetCommand
+from accounting.commands.sheet_commands import (
+    SelectSheetCommand,
+    build_additional_sheet_commands,
+)
 from accounting.commands.expense_commands import (
     CleaningExpenseCommand,
     ExpenseCommand,
@@ -14,7 +17,7 @@ from accounting.commands.cash_commands import (
 )
 from accounting.commands.employee_commands import (
     AdminPaymentCommand,
-    WorkerPaymentCommand,
+    WorkerLoanCommand,
 )
 from accounting.commands.summary_command import SummaryCommand
 from accounting.commands.undo_command import UndoCommand
@@ -25,10 +28,11 @@ def build_default_commands() -> list[Command]:
     """Construye la lista de comandos disponibles del bot."""
     return [
         SelectSheetCommand(),
+        *build_additional_sheet_commands(),
         ExpenseCommand(),
         CleaningExpenseCommand(),
         FeedingExpenseCommand(),
-        WorkerPaymentCommand(),
+        WorkerLoanCommand(),
         AdminPaymentCommand(),
         WithdrawalCommand(),
         BalanceCommand(),

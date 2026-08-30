@@ -40,6 +40,7 @@ class Settings:
     # --- Google Drive (valores universales a todos los businesses) ---
     master_folder_id: str
     planilla_template_id: str
+    workers_template_id: str
 
     # --- Google OAuth ---
     google_client_secret_path: Path
@@ -61,6 +62,7 @@ class Settings:
             deepseek_api_key=_env("DEEPSEEK_API_KEY", ""),
             master_folder_id=_env("MASTER_FOLDER_ID", ""),
             planilla_template_id=_env("PLANILLA_TEMPLATE_ID", ""),
+            workers_template_id=_env("WORKERS_TEMPLATE_ID", ""),
             google_client_secret_path=Path(
                 _env("GOOGLE_CLIENT_SECRET_PATH", str(PROJECT_ROOT / "client_secret.json"))
             ),

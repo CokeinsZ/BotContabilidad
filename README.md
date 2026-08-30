@@ -46,6 +46,46 @@ uv run --directory src uvicorn main:app --host 0.0.0.0 --port 8000
    abrir `https://contabilidad.notiasis.com/auth/login`, iniciar sesión y
    conceder permisos. El servidor guarda `token.json` automáticamente.
 
+## Funcionalidades
+
+### Planillas múltiples por día
+
+Además de `hoja <dd-mm-aaaa>` (primera planilla del día), se pueden crear
+planillas adicionales del mismo día:
+
+```
+segunda planilla     tercera planilla     2 planilla     3 planilla ...
+```
+
+- Se nombran `dd-mm-yyyy-2`, `dd-mm-yyyy-3`, etc., en la misma carpeta del mes.
+- La planilla N toma como saldo de caja (B42) el saldo total (B46) de la
+  planilla N-1 del mismo día.
+- La primera planilla del día siguiente toma el saldo de la planilla MÁS
+  ALTA del día anterior.
+- Se deben crear en orden (no se puede crear la tercera sin la segunda).
+- Por defecto usan la fecha de la planilla activa; también aceptan fecha
+  explícita: `segunda planilla 24-08-2026`.
+
+### Préstamos a trabajadores
+
+`trabajador <monto> <nombre>` registra un **préstamo** (no un pago de nómina):
+
+1. Siempre se registra en la planilla diaria (región de trabajadores).
+2. Además se registra en el **archivo individual del trabajador** (columna A:
+   fecha, columna B: monto; fila según el contador en C123), dentro de la
+   carpeta `workers_folder_id` del business:
+   - Si no existe archivo para ese nombre, se crea duplicando
+     `WORKERS_TEMPLATE_ID` y se notifica con un mensaje aparte.
+   - Si hay varios archivos con nombre similar, el bot envía un menú
+     numerado y el usuario responde con el número de la opción (la última
+     opción crea un trabajador nuevo).
+
+Configurar la carpeta de trabajadores de un business:
+
+```bash
+uv run python src/cli.py set-workers-folder <business_id> <workers_folder_id>
+```
+
 ## Multi-empresa
 
 - Cada business se identifica por el **número de WhatsApp** del remitente,

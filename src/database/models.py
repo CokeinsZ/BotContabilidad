@@ -7,6 +7,7 @@ class Business:
     id: int
     name: str
     sheets_folder_id: str
+    workers_folder_id: str | None
     state: str
 
 

@@ -23,7 +23,7 @@ class BusinessRepository:
             .execute(
                 """
                 SELECT
-                    b.id   AS b_id,  b.name AS b_name,  b.sheets_folder_id, b.state AS b_state,
+                    b.id   AS b_id,  b.name AS b_name,  b.sheets_folder_id, b.workers_folder_id, b.state AS b_state,
                     a.id   AS a_id,  a.name AS a_name,  a.phone_number,     a.state AS a_state,
                     a.business_id
                 FROM business_administrators a
@@ -44,6 +44,7 @@ class BusinessRepository:
             id=row["b_id"],
             name=row["b_name"],
             sheets_folder_id=row["sheets_folder_id"],
+            workers_folder_id=row["workers_folder_id"],
             state=row["b_state"],
         )
         administrator = Administrator(
@@ -59,7 +60,7 @@ class BusinessRepository:
         row = (
             self._db.connect()
             .execute(
-                "SELECT id, name, sheets_folder_id, state FROM businesses WHERE id = ?",
+                "SELECT id, name, sheets_folder_id, workers_folder_id, state FROM businesses WHERE id = ?",
                 (business_id,),
             )
             .fetchone()
@@ -69,7 +70,7 @@ class BusinessRepository:
     def list_all(self) -> list[Business]:
         rows = (
             self._db.connect()
-            .execute("SELECT id, name, sheets_folder_id, state FROM businesses ORDER BY id")
+            .execute("SELECT id, name, sheets_folder_id, workers_folder_id, state FROM businesses ORDER BY id")
             .fetchall()
         )
         return [self._to_business(row) for row in rows]
@@ -93,14 +94,31 @@ class BusinessRepository:
     # ------------------------------------------------------------------
     # Escrituras
     # ------------------------------------------------------------------
-    def create_business(self, name: str, sheets_folder_id: str) -> Business:
+    def create_business(
+        self, name: str, sheets_folder_id: str, workers_folder_id: str | None = None
+    ) -> Business:
         connection = self._db.connect()
         cursor = connection.execute(
-            "INSERT INTO businesses (name, sheets_folder_id) VALUES (?, ?)",
-            (name, sheets_folder_id),
+            """
+            INSERT INTO businesses (name, sheets_folder_id, workers_folder_id)
+            VALUES (?, ?, ?)
+            """,
+            (name, sheets_folder_id, workers_folder_id),
         )
         connection.commit()
         return self.find_by_id(cursor.lastrowid)
+
+    def update_workers_folder(self, business_id: int, workers_folder_id: str) -> None:
+        connection = self._db.connect()
+        connection.execute(
+            """
+            UPDATE businesses
+            SET workers_folder_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (workers_folder_id, business_id),
+        )
+        connection.commit()
 
     def create_administrator(
         self, business_id: int, name: str, phone_number: str
@@ -134,6 +152,7 @@ class BusinessRepository:
             id=row["id"],
             name=row["name"],
             sheets_folder_id=row["sheets_folder_id"],
+            workers_folder_id=row["workers_folder_id"],
             state=row["state"],
         )
 

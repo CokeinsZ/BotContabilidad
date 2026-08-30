@@ -29,8 +29,20 @@ def build_repository() -> BusinessRepository:
 
 def cmd_add_business(args) -> None:
     repository = build_repository()
-    business = repository.create_business(args.name, args.sheets_folder_id)
+    business = repository.create_business(
+        args.name, args.sheets_folder_id, args.workers_folder
+    )
     print(f"✅ Business creado: id={business.id} name='{business.name}'")
+
+
+def cmd_set_workers_folder(args) -> None:
+    repository = build_repository()
+    business = repository.find_by_id(args.business_id)
+    if business is None:
+        print(f"⚠️ No existe un business con id {args.business_id}.")
+        return
+    repository.update_workers_folder(args.business_id, args.workers_folder_id)
+    print(f"✅ Carpeta de trabajadores de '{business.name}' actualizada: {args.workers_folder_id}")
 
 
 def cmd_add_admin(args) -> None:
@@ -59,7 +71,9 @@ def cmd_list_businesses(_args) -> None:
     for business in businesses:
         print(
             f"[{business.id}] {business.name} "
-            f"(folder: {business.sheets_folder_id}, estado: {business.state})"
+            f"(planillas: {business.sheets_folder_id}, "
+            f"trabajadores: {business.workers_folder_id or 'sin configurar'}, "
+            f"estado: {business.state})"
         )
 
 
@@ -80,7 +94,14 @@ def main() -> None:
     add_business = subparsers.add_parser("add-business", help="Registrar un business")
     add_business.add_argument("name", help="Nombre del negocio (se escribe en A2:E2 de cada planilla)")
     add_business.add_argument("sheets_folder_id", help="ID de la carpeta de Drive donde se guardan sus planillas")
+    add_business.add_argument("--workers-folder", dest="workers_folder", default=None,
+                              help="ID de la carpeta de Drive donde se guardan los archivos de trabajadores")
     add_business.set_defaults(func=cmd_add_business)
+
+    set_workers = subparsers.add_parser("set-workers-folder", help="Configurar la carpeta de trabajadores de un business")
+    set_workers.add_argument("business_id", type=int, help="ID del business")
+    set_workers.add_argument("workers_folder_id", help="ID de la carpeta de Drive de trabajadores")
+    set_workers.set_defaults(func=cmd_set_workers_folder)
 
     add_admin = subparsers.add_parser("add-admin", help="Registrar un administrador")
     add_admin.add_argument("business_id", type=int, help="ID del business")

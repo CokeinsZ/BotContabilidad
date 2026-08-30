@@ -28,9 +28,15 @@ _SHEET_MIME = "application/vnd.google-apps.spreadsheet"
 class DriveClient:
     """Operaciones sobre Google Drive, agnóstico del business (stateless)."""
 
-    def __init__(self, auth_manager: GoogleAuthManager, template_id: str):
+    def __init__(
+        self,
+        auth_manager: GoogleAuthManager,
+        planilla_template_id: str,
+        workers_template_id: str,
+    ):
         self._auth_manager = auth_manager
-        self._template_id = template_id
+        self._planilla_template_id = planilla_template_id
+        self._workers_template_id = workers_template_id
         self._service = None
         self._credentials_used = None
 
@@ -85,7 +91,7 @@ class DriveClient:
     def duplicate_template(
         self, folder_id: str, new_name: str
     ) -> tuple[str, str] | None:
-        """Duplica la plantilla dentro de la carpeta mensual del business.
+        """Duplica la plantilla de planilla dentro de la carpeta mensual del business.
 
         Crea la carpeta del mes (`mes-aaaa`) si no existe.
         Devuelve (id, nombre) de la copia, o None si falla.
@@ -101,17 +107,97 @@ class DriveClient:
             if month_folder_id is None:
                 return None
 
+        return self._copy_file(self._planilla_template_id, new_name, month_folder_id)
+
+    def duplicate_workers_template(
+        self, folder_id: str, worker_name: str
+    ) -> tuple[str, str] | None:
+        """Duplica el Formato_Trabajadores en la carpeta de trabajadores.
+
+        Devuelve (id, nombre) de la copia, o None si falla.
+        """
+        return self._copy_file(self._workers_template_id, worker_name, folder_id)
+
+    def _copy_file(
+        self, template_id: str, new_name: str, parent_folder_id: str
+    ) -> tuple[str, str] | None:
         try:
-            body = {"name": new_name, "parents": [month_folder_id]}
+            body = {"name": new_name, "parents": [parent_folder_id]}
             copied_file = (
                 self.service.files()
-                .copy(fileId=self._template_id, body=body)
+                .copy(fileId=template_id, body=body)
                 .execute()
             )
             return copied_file.get("id"), copied_file.get("name")
         except HttpError as error:
-            print(f"Error al duplicar la planilla: {error}")
+            print(f"Error al duplicar el archivo '{new_name}': {error}")
             return None
+
+    # ------------------------------------------------------------------
+    # Listados
+    # ------------------------------------------------------------------
+    def find_daily_sheets(self, folder_id: str, date_str: str) -> list[tuple[str, str]]:
+        """Lista (id, nombre) de TODAS las planillas de un día dado.
+
+        Incluye la planilla base (`dd-mm-yyyy`) y las adicionales
+        (`dd-mm-yyyy-2`, `dd-mm-yyyy-3`, ...), ordenadas por ordinal.
+        """
+        month_folder_name = self.month_folder_name_for(date_str)
+        if month_folder_name is None:
+            return []
+
+        month_folder_id = self._find_folder(folder_id, month_folder_name)
+        if month_folder_id is None:
+            return []
+
+        candidates = [
+            (file_id, name)
+            for file_id, name in self.list_files_in_folder(month_folder_id)
+            if self._day_ordinal(name, date_str) is not None
+        ]
+        candidates.sort(key=lambda item: self._day_ordinal(item[1], date_str))
+        return candidates
+
+    def list_files_in_folder(self, folder_id: str) -> list[tuple[str, str]]:
+        """Lista (id, nombre) de todos los spreadsheets de una carpeta."""
+        files: list[tuple[str, str]] = []
+        try:
+            page_token = None
+            while True:
+                query = (
+                    f"mimeType='{_SHEET_MIME}' and "
+                    f"'{folder_id}' in parents and trashed=false"
+                )
+                response = (
+                    self.service.files()
+                    .list(
+                        q=query,
+                        fields="nextPageToken, files(id,name)",
+                        pageSize=100,
+                        pageToken=page_token,
+                    )
+                    .execute()
+                )
+                files.extend((f["id"], f["name"]) for f in response.get("files", []))
+                page_token = response.get("nextPageToken")
+                if not page_token:
+                    break
+            return files
+        except HttpError as error:
+            print(f"Error listando archivos de la carpeta {folder_id}: {error}")
+            return []
+
+    @staticmethod
+    def _day_ordinal(name: str, date_str: str) -> int | None:
+        """Ordinal de la planilla dentro del día: base=1, `-N`=N. None si no aplica."""
+        if name == date_str:
+            return 1
+        prefix = f"{date_str}-"
+        if name.startswith(prefix):
+            suffix = name[len(prefix):]
+            if suffix.isdigit():
+                return int(suffix)
+        return None
 
     # ------------------------------------------------------------------
     # Carpetas

@@ -6,7 +6,7 @@ from typing import ClassVar
 from database.models import Administrator, Business
 from drive.drive_client import DriveClient
 from sheets.sheets_client import SheetsClient
-from accounting.session_manager import UserSession
+from accounting.session_manager import CommandResult, UserSession
 
 
 @dataclass
@@ -31,8 +31,8 @@ class Command(ABC):
     aliases: ClassVar[tuple[str, ...]] = ()
 
     @abstractmethod
-    def execute(self, ctx: CommandContext, args: list[str]) -> str:
-        """Ejecuta el comando y devuelve el mensaje de respuesta al usuario."""
+    def execute(self, ctx: CommandContext, args: list[str]) -> CommandResult:
+        """Ejecuta el comando y devuelve uno o varios mensajes al usuario."""
 
     # ------------------------------------------------------------------
     # Helpers compartidos

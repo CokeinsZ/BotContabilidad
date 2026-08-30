@@ -7,8 +7,12 @@ anterior, donde todos los usuarios compartían una única planilla activa.
 """
 import threading
 from dataclasses import dataclass
+from typing import Callable, Union
 
 from sheets.layout import SheetRegion
+
+#: Respuesta de un comando: uno o varios mensajes para el usuario.
+CommandResult = Union[str, list[str]]
 
 
 @dataclass
@@ -23,6 +27,18 @@ class UndoSnapshot:
 
 
 @dataclass
+class PendingSelection:
+    """Una pregunta abierta al usuario que se responde con un número.
+
+    La lógica de resolución la provee el comando que creó la selección
+    (closure), por lo que el núcleo no conoce detalles de cada caso.
+    """
+
+    description: str
+    resolver: Callable[[object, str], CommandResult]  # (CommandContext, texto) -> respuesta
+
+
+@dataclass
 class UserSession:
     """Estado de conversación de un administrador dentro de su business."""
 
@@ -31,6 +47,7 @@ class UserSession:
     active_sheet_id: str | None = None
     active_sheet_name: str | None = None
     undo_snapshot: UndoSnapshot | None = None
+    pending_selection: PendingSelection | None = None
 
     def set_active_sheet(self, sheet_id: str, sheet_name: str) -> None:
         self.active_sheet_id = sheet_id

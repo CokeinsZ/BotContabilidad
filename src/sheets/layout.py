@@ -44,9 +44,15 @@ class PlanillaLayout:
 
     # Regiones de filas dinámicas
     expense_region: SheetRegion = SheetRegion("C123", "A:B", 11)
-    worker_region: SheetRegion = SheetRegion("C124", "C:D", 11)
+    # Préstamos a trabajadores (no pagos: el dinero se descuenta luego)
+    worker_loan_region: SheetRegion = SheetRegion("C124", "C:D", 11)
     admin_region: SheetRegion = SheetRegion("C125", "E:E", 26)
     withdraw_region: SheetRegion = SheetRegion("C126", "C:E", 39)
     investment_region: SheetRegion = SheetRegion("C127", "C:D", 29)
     cleaning_region: SheetRegion = SheetRegion("C128", "E:E", 11)
     feeding_region: SheetRegion = SheetRegion("C129", "E:E", 20)
+
+    # Región del archivo individual de cada trabajador (Formato_Trabajadores):
+    # columna A = fecha del préstamo, columna B = monto. Mismo mecanismo de
+    # contador en C123 que las planillas.
+    worker_file_region: SheetRegion = SheetRegion("C123", "A:B", 1)

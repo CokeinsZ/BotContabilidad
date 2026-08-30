@@ -33,7 +33,6 @@ class WhatsAppService:
 
     async def handle_incoming_message(self, body: dict) -> None:
         """Procesa un webhook `messages-upsert` de Evolution API."""
-        print(body)
         message = IncomingMessage.from_webhook(body)
 
         reason = message.ignore_reason
@@ -49,7 +48,7 @@ class WhatsAppService:
         if message.is_audio:
             command = await self._audio_to_command(message.key.id)
         else:
-            command = await self._text_to_command(message.text)
+            command = await self._text_to_command(message.text, message.phone_number)
 
         if not command:
             print(f"No se pudo extraer un comando del mensaje de {message.phone_number}")
@@ -59,11 +58,12 @@ class WhatsAppService:
 
         # Las llamadas a Google son síncronas: se ejecutan en un hilo aparte
         # para no bloquear el event loop del servidor.
-        response = await asyncio.to_thread(
+        responses = await asyncio.to_thread(
             self._accounting.handle_command, message.phone_number, command
         )
-        if response:
-            await self.send_message(message.key.remote_jid, response)
+        for response in responses:
+            if response:
+                await self.send_message(message.key.remote_jid, response)
 
     async def send_message(self, to: str, message: str) -> None:
         """Envía un mensaje de texto a través de Evolution API."""
@@ -87,9 +87,15 @@ class WhatsAppService:
     # ------------------------------------------------------------------
     # Conversión de entrada a comando
     # ------------------------------------------------------------------
-    async def _text_to_command(self, text: str | None) -> str | None:
+    async def _text_to_command(self, text: str | None, phone_number: str) -> str | None:
         if not text:
             return None
+        # Si el usuario está respondiendo una selección pendiente con un
+        # número, NO pasar por la IA: el número es la respuesta directa.
+        if text.strip().isdigit() and await asyncio.to_thread(
+            self._accounting.has_pending_selection, phone_number
+        ):
+            return text.strip()
         return await self._deepseek.extract_commands(text)
 
     async def _audio_to_command(self, message_id: str) -> str | None:

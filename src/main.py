@@ -46,7 +46,11 @@ class Container:
 
         # Clientes de Google (agnósticos del business)
         self.sheets_client = SheetsClient(self.auth_manager)
-        self.drive_client = DriveClient(self.auth_manager, settings.planilla_template_id)
+        self.drive_client = DriveClient(
+            self.auth_manager,
+            planilla_template_id=settings.planilla_template_id,
+            workers_template_id=settings.workers_template_id,
+        )
 
         # Núcleo de contabilidad
         self.session_manager = SessionManager()

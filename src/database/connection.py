@@ -26,6 +26,30 @@ class Database:
         connection = self.connect()
         connection.executescript(schema_sql)
         connection.commit()
+        self._run_migrations(connection)
+
+    def _run_migrations(self, connection: sqlite3.Connection) -> None:
+        """Migraciones idempotentes para bases de datos ya existentes.
+
+        `CREATE TABLE IF NOT EXISTS` no actualiza tablas viejas: si una tabla
+        ya existía cuando se agregó una columna nueva al esquema, hay que
+        hacer el ALTER TABLE manualmente. Cada entrada es idempotente.
+        """
+        migrations = [
+            # (tabla, columna, DDL si falta la columna)
+            (
+                "businesses",
+                "workers_folder_id",
+                "ALTER TABLE businesses ADD COLUMN workers_folder_id TEXT",
+            ),
+        ]
+        for table, column, ddl in migrations:
+            columns = {
+                row[1] for row in connection.execute(f"PRAGMA table_info({table})")
+            }
+            if column not in columns:
+                connection.execute(ddl)
+                connection.commit()
 
     def connect(self) -> sqlite3.Connection:
         """Devuelve la conexión del hilo actual, creándola si es necesario."""
