@@ -13,17 +13,19 @@ class UndoCommand(Command):
         if snapshot is None:
             return "⚠️ No hay un comando para deshacer."
 
-        if snapshot.region is not None:
-            success = ctx.sheets.undo_last_entry(snapshot.sheet_id, snapshot.region)
-        elif snapshot.cell is not None:
-            success = ctx.sheets.set_values(
-                snapshot.sheet_id, {snapshot.cell: [[snapshot.restore_value]]}
-            )
-        else:
-            success = False
+        success = True
+        for step in snapshot.steps:
+            if step.region is not None:
+                ok = ctx.sheets.undo_last_entry(step.sheet_id, step.region)
+            elif step.cell is not None:
+                ok = ctx.sheets.set_values(step.sheet_id, {step.cell: [[step.restore_value]]})
+            else:
+                ok = False
+            if not ok:
+                success = False
 
         if success:
             ctx.session.undo_snapshot = None
             return f"✅ Se deshizo el último comando: {snapshot.description}."
 
-        return "⚠️ No se pudo deshacer el último comando."
+        return "⚠️ No se pudo deshacer el último comando completamente."

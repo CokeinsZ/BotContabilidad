@@ -77,9 +77,9 @@ class FixedCellCommand(Command):
         if not ctx.sheets.set_values(sheet_id, {cell: [[value]]}):
             return "⚠️ No se pudo registrar el valor en la planilla."
 
-        ctx.session.undo_snapshot = UndoSnapshot(
-            sheet_id=sheet_id,
+        ctx.session.undo_snapshot = UndoSnapshot.single(
             description=" ".join([self.name, *args]),
+            sheet_id=sheet_id,
             cell=cell,
             restore_value=(
                 previous_value if previous_value is not None else self.empty_value

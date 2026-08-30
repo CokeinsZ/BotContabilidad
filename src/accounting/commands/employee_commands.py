@@ -1,7 +1,8 @@
 """Comandos de préstamos a trabajadores y vales del administrador."""
+from datetime import datetime
 from accounting.commands.base import Command, CommandContext
 from accounting.commands.region_entry import RegionEntryCommand
-from accounting.session_manager import CommandResult, PendingSelection
+from accounting.session_manager import CommandResult, PendingSelection, UndoSnapshot
 from accounting.sheet_naming import base_date_of
 
 
@@ -49,7 +50,7 @@ class WorkerLoanCommand(Command):
     def _record_in_daily_sheet(
         self, ctx: CommandContext, amount: float, worker_name: str, args: list[str]
     ) -> list[str]:
-        from accounting.session_manager import UndoSnapshot
+        from accounting.session_manager import UndoSnapshot, UndoStep
 
         sheet_id = ctx.session.active_sheet_id
         region = ctx.sheets.layout.worker_loan_region
@@ -57,10 +58,12 @@ class WorkerLoanCommand(Command):
         if not ctx.sheets.append_to_region(sheet_id, region, [worker_name, amount]):
             return ["⚠️ No se pudo registrar el préstamo en la planilla."]
 
+        # Guardar info para el undo del archivo del trabajador (se completa después)
         ctx.session.undo_snapshot = UndoSnapshot(
-            sheet_id=sheet_id,
             description=" ".join([self.name, *args]),
-            region=region,
+            steps=[
+                UndoStep(sheet_id=sheet_id, region=region),
+            ],
         )
         return [f"Préstamo registrado: {amount} - {worker_name}"]
 
@@ -101,6 +104,8 @@ class WorkerLoanCommand(Command):
         self, ctx: CommandContext, file_id: str, amount: float, worker_name: str
     ) -> list[str]:
         """Escribe [fecha, monto] en la fila indicada por el contador C123."""
+        from accounting.session_manager import UndoStep
+
         sheet_date = base_date_of(ctx.session.active_sheet_name or "")
         if sheet_date is None:
             sheet_date = ""
@@ -110,6 +115,20 @@ class WorkerLoanCommand(Command):
             return [
                 f"⚠️ No se pudo registrar el préstamo en el archivo de '{worker_name}'."
             ]
+
+        # Agregar paso de undo para el archivo del trabajador
+        if ctx.session.undo_snapshot is not None:
+            ctx.session.undo_snapshot.steps.append(
+                UndoStep(sheet_id=file_id, region=region)
+            )
+        else:
+            # Caso borde: solo archivo, sin planilla (no debería pasar)
+            ctx.session.undo_snapshot = UndoSnapshot.single(
+                description=f"trabajador {amount} {worker_name} (solo archivo)",
+                sheet_id=file_id,
+                region=region,
+            )
+
         return [f"📄 Préstamo guardado en el archivo de '{worker_name}'."]
 
     # ------------------------------------------------------------------
@@ -201,3 +220,147 @@ class AdminPaymentCommand(RegionEntryCommand):
 
     def build_row(self, args: list[str]) -> list:
         return [self.parse_amount(args[0])]
+
+
+class NominaCommand(Command):
+    """`nomina <nombre>`: cierra el período de un trabajador (nómina).
+
+    1. Envía mensaje con: nombre, suma de préstamos (B30) y URL al archivo.
+    2. En el archivo del trabajador:
+       - Duplica la hoja principal (la primera hoja).
+       - En la copia: borra filas 1-9 (mantiene solo los vales/préstamos).
+       - Nombra la nueva hoja con la fecha de hoy (dd-mm-yyyy).
+    3. Limpia la hoja principal:
+       - Columna A (filas 13-28): strings vacíos.
+       - Columna B (filas 13-28): ceros.
+       - Reinicia contador C123 a 13.
+    """
+
+    name = "nomina"
+    aliases = ("nómina", "n")
+
+    def execute(self, ctx: CommandContext, args: list[str]) -> CommandResult:
+        if error := self.require_active_sheet(ctx):
+            return error
+        if len(args) < 1:
+            return "⚠️ Debes proporcionar el nombre del trabajador."
+
+        worker_name = " ".join(args)
+        folder_id = ctx.business.workers_folder_id
+        if not folder_id:
+            return (
+                "⚠️ Este negocio no tiene configurada la carpeta de trabajadores "
+                "(workers_folder_id)."
+            )
+
+        # Buscar archivo del trabajador (coincidencia exacta o similar único)
+        candidates = self._find_worker_files(ctx, folder_id, worker_name)
+        if not candidates:
+            return f"⚠️ No se encontró archivo para el trabajador '{worker_name}'."
+
+        # Si hay varios, pedir desambiguación (reutiliza la lógica existente)
+        if len(candidates) > 1:
+            return self._ask_for_selection_nomina(ctx, worker_name, candidates)
+
+        file_id, file_name = candidates[0]
+        return self._process_nomina(ctx, file_id, file_name, worker_name)
+
+    def _find_worker_files(
+        self, ctx: CommandContext, folder_id: str, worker_name: str
+    ) -> list[tuple[str, str]]:
+        """Archivos de la carpeta cuyo nombre contiene el nombre buscado."""
+        query = worker_name.lower()
+        return [
+            (file_id, name)
+            for file_id, name in ctx.drive.list_files_in_folder(folder_id)
+            if query in name.lower()
+        ]
+
+    def _process_nomina(
+        self, ctx: CommandContext, file_id: str, file_name: str, worker_name: str
+    ) -> CommandResult:
+        """Ejecuta los 3 pasos de la nómina."""
+        today = datetime.now().strftime("%d-%m-%Y")
+        sheet_url = f"https://docs.google.com/spreadsheets/d/{file_id}/edit?usp=sharing"
+
+        # 1. Leer suma de préstamos (B30) y enviar mensaje
+        loan_sum = ctx.sheets.get_worker_loan_sum(file_id) or "0"
+        message = (
+            f"📋 Nómina de {worker_name}\n"
+            f"Suma de préstamos: {loan_sum}\n"
+            f"Archivo: {sheet_url}"
+        )
+
+        # 2. Duplicar hoja principal, borrar filas 1-9, renombrar a fecha de hoy
+        # La hoja principal es la primera (índice 0)
+        main_sheet_id = ctx.sheets.get_sheet_id_by_name(file_id, file_name)
+        if main_sheet_id is None:
+            # Si no se encuentra por nombre exacto, tomar la primera hoja
+            spreadsheet = ctx.sheets.service.spreadsheets().get(
+                spreadsheetId=file_id, fields="sheets(properties(sheetId,title))"
+            ).execute()
+            sheets_props = spreadsheet.get("sheets", [])
+            if not sheets_props:
+                return [f"⚠️ No se encontraron hojas en el archivo de '{worker_name}'."]
+            main_sheet_id = sheets_props[0]["properties"]["sheetId"]
+
+        new_sheet_id = ctx.sheets.duplicate_sheet(file_id, main_sheet_id, today)
+        if new_sheet_id is None:
+            return [f"⚠️ No se pudo crear la hoja de nómina para '{worker_name}'."]
+
+        # Borrar filas 1-9 (índices 0-8) en la nueva hoja
+        if not ctx.sheets.delete_rows(file_id, new_sheet_id, 1, 10):
+            return ["⚠️ No se pudieron borrar las filas 1-9 en la hoja de nómina."]
+
+        # 3. Limpiar hoja principal: A13:A28 vacíos, B13:B28 ceros, C123=13
+        # get_sheet_name_by_id no es crítico, usamos file_name como fallback
+        _ = ctx.sheets.get_sheet_id_by_name(file_id, file_name)  # validación
+
+        # A13:A28 -> vacíos (strings vacíos)
+        ctx.sheets.clear_range_a1(file_id, "A13:A28", "")
+        # B13:B28 -> ceros
+        ctx.sheets.clear_range_a1(file_id, "B13:B28", 0)
+        # C123 = 13
+        ctx.sheets.reset_counter(file_id, "C123", 13)
+
+        return [
+            message,
+            f"✅ Nómina procesada: hoja '{today}' creada y hoja principal limpiada.",
+        ]
+
+    def _ask_for_selection_nomina(
+        self, ctx: CommandContext, worker_name: str, candidates: list[tuple[str, str]]
+    ) -> str:
+        """Pide al usuario que elija cuál archivo usar para la nómina."""
+        ctx.session.pending_selection = PendingSelection(
+            description=f"nomina {worker_name}",
+            resolver=self._make_selection_resolver_nomina(worker_name, candidates),
+        )
+        return self._build_menu_nomina(worker_name, candidates)
+
+    def _make_selection_resolver_nomina(
+        self, worker_name: str, candidates: list[tuple[str, str]]
+    ):
+        def resolve(ctx: CommandContext, text: str) -> CommandResult:
+            option = int(text)
+            if 1 <= option <= len(candidates):
+                file_id, file_name = candidates[option - 1]
+                return self._process_nomina(ctx, file_id, file_name, worker_name)
+            # Opción inválida
+            ctx.session.pending_selection = PendingSelection(
+                description=f"nomina {worker_name}",
+                resolver=self._make_selection_resolver_nomina(worker_name, candidates),
+            )
+            return [
+                f"⚠️ Opción inválida: {option}.",
+                self._build_menu_nomina(worker_name, candidates),
+            ]
+        return resolve
+
+    @staticmethod
+    def _build_menu_nomina(worker_name: str, candidates: list[tuple[str, str]]) -> str:
+        lines = [f"⚠️ Hay varios trabajadores con nombre similar a '{worker_name}':\n"]
+        for index, (_file_id, name) in enumerate(candidates, start=1):
+            lines.append(f"{index}. {name}")
+        lines.append("\nResponde con el número del trabajador para hacer nómina.")
+        return "\n".join(lines)

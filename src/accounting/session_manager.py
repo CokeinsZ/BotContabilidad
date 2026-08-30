@@ -6,25 +6,45 @@ su última acción deshacible. Esto elimina el estado global de la versión
 anterior, donde todos los usuarios compartían una única planilla activa.
 """
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Union
 
 from sheets.layout import SheetRegion
+
 
 #: Respuesta de un comando: uno o varios mensajes para el usuario.
 CommandResult = Union[str, list[str]]
 
 
 @dataclass
-class UndoSnapshot:
-    """Información necesaria para revertir la última acción del usuario."""
+class UndoStep:
+    """Un paso individual de deshacer (una operación atómica)."""
 
     sheet_id: str
-    description: str
-    region: SheetRegion | None = None  # si la acción agregó una fila
-    cell: str | None = None            # si la acción sobrescribió una celda
-    restore_value: object = ""         # valor a restaurar en `cell`
+    region: SheetRegion | None = None      # si la acción agregó una fila
+    cell: str | None = None                # si la acción sobrescribió una celda
+    restore_value: object = ""             # valor a restaurar en `cell`
 
+
+@dataclass
+class UndoSnapshot:
+    """Información necesaria para revertir la última acción del usuario.
+
+    Soporta múltiples pasos (ej: préstamo que escribe en planilla + archivo trabajador).
+    """
+
+    description: str
+    steps: list[UndoStep] = field(default_factory=list)
+
+    @classmethod
+    def single(cls, description: str, sheet_id: str,
+               region: SheetRegion | None = None,
+               cell: str | None = None,
+               restore_value: object = "") -> "UndoSnapshot":
+        """Crea un snapshot con un solo paso (compatibilidad)."""
+        return cls(description=description, steps=[
+            UndoStep(sheet_id=sheet_id, region=region, cell=cell, restore_value=restore_value)
+        ])
 
 @dataclass
 class PendingSelection:

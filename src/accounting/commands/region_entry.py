@@ -47,8 +47,10 @@ class RegionEntryCommand(Command):
         if not ctx.sheets.append_to_region(sheet_id, region, row):
             return "⚠️ No se pudo registrar el movimiento en la planilla."
 
-        ctx.session.undo_snapshot = UndoSnapshot(
-            sheet_id=sheet_id, description=self.describe(args), region=region
+        ctx.session.undo_snapshot = UndoSnapshot.single(
+            description=self.describe(args),
+            sheet_id=sheet_id,
+            region=region,
         )
         return self.success_message(args)
 

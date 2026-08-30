@@ -17,6 +17,7 @@ from accounting.commands.cash_commands import (
 )
 from accounting.commands.employee_commands import (
     AdminPaymentCommand,
+    NominaCommand,
     WorkerLoanCommand,
 )
 from accounting.commands.summary_command import SummaryCommand
@@ -33,6 +34,7 @@ def build_default_commands() -> list[Command]:
         CleaningExpenseCommand(),
         FeedingExpenseCommand(),
         WorkerLoanCommand(),
+        NominaCommand(),
         AdminPaymentCommand(),
         WithdrawalCommand(),
         BalanceCommand(),

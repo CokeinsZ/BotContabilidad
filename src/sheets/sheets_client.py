@@ -152,3 +152,127 @@ class SheetsClient:
             value_at(4),  # B42 saldo previo
             value_at(8),  # B46 saldo total
         )
+
+    # ------------------------------------------------------------------
+    # Operaciones estructurales de hojas (batchUpdate)
+    # ------------------------------------------------------------------
+    def get_sheet_id_by_name(self, spreadsheet_id: str, sheet_name: str) -> int | None:
+        """Devuelve el sheetId (numérico) de una hoja por su nombre."""
+        try:
+            spreadsheet = self.service.spreadsheets().get(
+                spreadsheetId=spreadsheet_id, fields="sheets(properties(sheetId,title))"
+            ).execute()
+            for sheet in spreadsheet.get("sheets", []):
+                if sheet["properties"]["title"] == sheet_name:
+                    return sheet["properties"]["sheetId"]
+            return None
+        except HttpError as error:
+            print(f"Error obteniendo sheetId de '{sheet_name}': {error}")
+            return None
+
+    def duplicate_sheet(self, spreadsheet_id: str, source_sheet_id: int, new_name: str) -> int | None:
+        """Duplica una hoja dentro del mismo spreadsheet y la renombra.
+
+        Devuelve el sheetId de la nueva hoja.
+        """
+        try:
+            request = {
+                "duplicateSheet": {
+                    "sourceSheetId": source_sheet_id,
+                    "newSheetName": new_name,
+                }
+            }
+            response = self.service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id, body={"requests": [request]}
+            ).execute()
+            new_sheet_id = response["replies"][0]["duplicateSheet"]["properties"]["sheetId"]
+            return new_sheet_id
+        except HttpError as error:
+            print(f"Error duplicando hoja {source_sheet_id} a '{new_name}': {error}")
+            return None
+
+    def delete_rows(self, spreadsheet_id: str, sheet_id: int, start_row: int, end_row: int) -> bool:
+        """Borra filas [start_row, end_row) (1-indexed, end exclusivo) de una hoja.
+
+        Nota: la API usa índices 0-based, así que restamos 1.
+        """
+        try:
+            request = {
+                "deleteDimension": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "dimension": "ROWS",
+                        "startIndex": start_row - 1,
+                        "endIndex": end_row - 1,
+                    }
+                }
+            }
+            self.service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id, body={"requests": [request]}
+            ).execute()
+            return True
+        except HttpError as error:
+            print(f"Error borrando filas {start_row}-{end_row} de hoja {sheet_id}: {error}")
+            return False
+
+    def clear_range(self, spreadsheet_id: str, range_a1: str, fill_value: str | int = "") -> bool:
+        """Limpia un rango escribiendo un valor (vacío o 0)."""
+        try:
+            # Primero obtener dimensiones del rango para saber cuántas celdas escribir
+            values = self.get_values(spreadsheet_id, [range_a1]).get(range_a1, [[]])
+            if not values:
+                return True
+            rows = len(values)
+            cols = max(len(row) for row in values) if values else 1
+            fill_values = [[fill_value] * cols for _ in range(rows)]
+            return self.set_values(spreadsheet_id, {range_a1: fill_values})
+        except HttpError as error:
+            print(f"Error limpiando rango {range_a1}: {error}")
+            return False
+
+    def clear_range_a1(self, spreadsheet_id: str, range_a1: str, fill_value: str | int = "") -> bool:
+        """Limpia un rango A1 específico escribiendo fill_value."""
+        try:
+            # Parsear el rango A1 para saber dimensiones
+            # Formato: "A13:A28" o "A13:B28"
+            if ":" not in range_a1:
+                # Celda simple
+                fill_values = [[fill_value]]
+            else:
+                start, end = range_a1.split(":")
+                # Parsear coordenadas
+                def parse_cell(cell):
+                    col = ""
+                    row = ""
+                    for ch in cell:
+                        if ch.isalpha():
+                            col += ch
+                        else:
+                            row += ch
+                    return col, int(row)
+                start_col, start_row = parse_cell(start)
+                end_col, end_row = parse_cell(end)
+                rows = end_row - start_row + 1
+                # Contar columnas
+                def col_to_num(col):
+                    num = 0
+                    for ch in col:
+                        num = num * 26 + (ord(ch.upper()) - ord('A') + 1)
+                    return num
+                cols = col_to_num(end_col) - col_to_num(start_col) + 1
+                fill_values = [[fill_value] * cols for _ in range(rows)]
+            return self.set_values(spreadsheet_id, {range_a1: fill_values})
+        except HttpError as error:
+            print(f"Error limpiando rango {range_a1}: {error}")
+            return False
+
+    def reset_counter(self, spreadsheet_id: str, counter_cell: str, value: int) -> bool:
+        """Reinicia un contador a un valor específico."""
+        return self.set_values(spreadsheet_id, {counter_cell: [[value]]})
+
+    # ------------------------------------------------------------------
+    # Operaciones específicas para nómina
+    # ------------------------------------------------------------------
+    def get_worker_loan_sum(self, spreadsheet_id: str) -> str | None:
+        """Obtiene la suma de préstamos (B30) del archivo del trabajador."""
+        return self.get_value(spreadsheet_id, "B30")
