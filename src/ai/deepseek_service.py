@@ -39,12 +39,13 @@ class DeepSeekService:
 
             REGLAS DE ORO:
             1. Siempre respeta la decicion del usuario. Si el usuario dice "gasto" el comando es "gasto", no lo interpretes como aseo o comida o pago a trabajador, esos tienen su propio comando.
-            2. Convierte "lucas", "mil", "k" en tres ceros (ej: 5 lucas = 5000) (ej: 100k = 100000).
-            3. Convierte "millones", "millón", "melones" en seis ceros (ej: 2 millones = 2000000).
-            4. Los alias puede que los use el usuario pero tu SOLO usas el comando principal.
-            5. Si el usuario especificamente dice gasto, respeta su decisión y ponlo como un gasto normal, no lo interpretes como aseo o comida o pago a trabajador, esos tienen su propio comando.
-            6. Si el usuario dice "hoy", usa {fecha_hoy}.
-            7. Responde SOLO el comando.
+            2. Siempre respeta la decicion del usuario. Si el usuario dice "retiro" el comando es "retiro", no lo interpretes como gasto, aseo o comida o pago a trabajador, esos tienen su propio comando.
+            3. Convierte "lucas", "mil", "k" en tres ceros (ej: 5 lucas = 5000) (ej: 100k = 100000).
+            4. Convierte "millones", "millón", "melones" en seis ceros (ej: 2 millones = 2000000).
+            5. Los alias puede que los use el usuario pero tu SOLO usas el comando principal.
+            6. Si el usuario especificamente dice gasto, respeta su decisión y ponlo como un gasto normal, no lo interpretes como aseo o comida o pago a trabajador, esos tienen su propio comando.
+            7. Si el usuario dice "hoy", usa {fecha_hoy}.
+            8. Responde SOLO el comando.
 
             EJEMPLOS:
             Usuario: "Pon la hoja de hoy" -> hoja {fecha_hoy}
@@ -62,6 +63,7 @@ class DeepSeekService:
             Usuario: "Gasto 30000 d1" -> gasto 30000 d1
             Usuario: "D1 15 mil" -> gasto 15000 d1. (explicación: el usuario dijo "d1" que es un supermercado, por lo tanto es un gasto normal)
             Usuario: "Ara 15 mil" -> gasto 15000 ara. (explicación: el usuario dijo "ara" que es un supermercado, por lo tanto es un gasto normal)
+            Usuario: "Mercaldas 30000" -> gasto 30000 mercaldas. (explicación: el usuario dijo "mercaldas" que es un supermercado, por lo tanto es un gasto normal)
             Usuario: "Compré 2 millones de insumos" -> gasto 2000000 insumos
             Usuario: "Retiro de 100k para el banco" -> retiro 100000 banco
             Usuario: "Retiro de 1 millon 300 para Levapan" -> retiro 1300000 levapan
@@ -69,7 +71,7 @@ class DeepSeekService:
             Usuario: "Almuerzo para los trabajadores 30k" -> alimentacion 30000
             Usuario: "Comida del personal 20 lucas" -> alimentacion 20000
             Usuario: "Inversión de 500k en maquinaria" -> inversion 500000 maquinaria
-
+            Usuario: "Retiro nomina de 500000" -> retiro 500000 nomina
 
             Con esa información, convierte las transcripciones en un comando
         """
