@@ -36,6 +36,7 @@ class WorkerLoanCommand(Command):
         except ValueError:
             return "⚠️ El monto del préstamo debe ser un número válido."
         worker_name = " ".join(args[1:])
+        worker_name = worker_name.lower().replace("é", "e").replace("á", "a").replace("í", "i").replace("ó", "o").replace("ú", "u").strip()  # Normalizar acentos y espacios para la búsqueda de archivos
 
         # 1. Registrar en la planilla diaria (siempre: es el movimiento de caja).
         messages = self._record_in_daily_sheet(ctx, amount, worker_name, args)
@@ -138,11 +139,10 @@ class WorkerLoanCommand(Command):
         self, ctx: CommandContext, folder_id: str, worker_name: str
     ) -> list[tuple[str, str]]:
         """Archivos de la carpeta cuyo nombre contiene el nombre buscado."""
-        query = worker_name.lower()
         return [
             (file_id, name)
             for file_id, name in ctx.drive.list_files_in_folder(folder_id)
-            if query in name.lower()
+            if worker_name in name.lower()
         ]
 
     def _ask_for_selection(
@@ -251,6 +251,7 @@ class NominaCommand(Command):
         except ValueError:
             return "⚠️ El monto debe ser un número válido."
         worker_name = " ".join(args[1:])
+        worker_name = worker_name.lower().replace("é", "e").replace("á", "a").replace("í", "i").replace("ó", "o").replace("ú", "u").strip()  # Normalizar acentos y espacios para la búsqueda de archivos
 
         # 1. Registrar el pago en la planilla diaria (región de trabajadores).
         sheet_id = ctx.session.active_sheet_id
@@ -300,11 +301,10 @@ class NominaCommand(Command):
         self, ctx: CommandContext, folder_id: str, worker_name: str
     ) -> list[tuple[str, str]]:
         """Archivos de la carpeta cuyo nombre contiene el nombre buscado."""
-        query = worker_name.lower().replace("é", "e").replace("á", "a").replace("í", "i").replace("ó", "o").replace("ú", "u").strip()
         return [
             (file_id, name)
             for file_id, name in ctx.drive.list_files_in_folder(folder_id)
-            if query in name.lower()
+            if worker_name in name.lower()
         ]
 
     def _process_nomina(
