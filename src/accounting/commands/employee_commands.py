@@ -357,7 +357,7 @@ class NominaCommand(Command):
         # C13:C28 -> vacíos (strings vacíos)
         ctx.sheets.clear_range_a1(file_id, f"{sheet_prefix}C13:C28", "")
         # C123 = 13
-        ctx.sheets.reset_counter(file_id, "C123", 13)
+        ctx.sheets.reset_counter(file_id, f"{sheet_prefix}C123", 13)
 
         messages.append(f"✅ Nómina procesada: hoja '{today}' creada y hoja principal limpiada.")
         return messages

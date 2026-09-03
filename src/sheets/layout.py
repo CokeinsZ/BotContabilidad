@@ -55,4 +55,7 @@ class PlanillaLayout:
     # Región del archivo individual de cada trabajador (Formato_Trabajadores):
     # columna A = fecha del préstamo, columna B = monto. Mismo mecanismo de
     # contador en C123 que las planillas.
-    worker_file_region: SheetRegion = SheetRegion("C123", "A:B", 1)
+    # IMPORTANTE: el prefijo "principal!" es obligatorio porque el archivo
+    # acumula subhojas de nómina y sin prefijo los rangos podrían escribir
+    # en la hoja equivocada.
+    worker_file_region: SheetRegion = SheetRegion("principal!C123", "principal!A:B", 1)

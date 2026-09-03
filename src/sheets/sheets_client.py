@@ -42,7 +42,13 @@ class SheetsClient:
     # Operaciones por lotes (batch)
     # ------------------------------------------------------------------
     def get_values(self, sheet_id: str, ranges: list[str]) -> dict[str, list[list]]:
-        """Lee varios rangos en UNA sola llamada (`values.batchGet`)."""
+        """Lee varios rangos en UNA sola llamada (`values.batchGet`).
+
+        Las claves del resultado son los rangos EXACTOS solicitados (la API
+        devuelve los valueRanges en el mismo orden de la petición), así los
+        rangos con prefijo de hoja (ej. "principal!C123") hacen match
+        correctamente.
+        """
         try:
             response = (
                 self.service.spreadsheets()
@@ -50,11 +56,13 @@ class SheetsClient:
                 .batchGet(spreadsheetId=sheet_id, ranges=ranges)
                 .execute()
             )
+            value_ranges = response.get("valueRanges", [])
             result: dict[str, list[list]] = {}
-            for value_range in response.get("valueRanges", []):
-                result[value_range.get("range", "").split("!")[-1]] = value_range.get(
-                    "values", [[]]
-                )
+            for index, requested in enumerate(ranges):
+                if index < len(value_ranges):
+                    result[requested] = value_ranges[index].get("values", [[]])
+                else:
+                    result[requested] = [[]]
             return result
         except HttpError as error:
             print(f"Error leyendo rangos {ranges} de {sheet_id}: {error}")
@@ -287,5 +295,5 @@ class SheetsClient:
     # Operaciones específicas para nómina
     # ------------------------------------------------------------------
     def get_worker_loan_sum(self, spreadsheet_id: str) -> str | None:
-        """Obtiene la suma de préstamos (B30) del archivo del trabajador."""
-        return self.get_value(spreadsheet_id, "B30")
+        """Obtiene la suma de préstamos (B30 de la hoja 'principal')."""
+        return self.get_value(spreadsheet_id, "principal!B30")
