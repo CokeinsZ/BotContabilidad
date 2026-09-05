@@ -59,3 +59,7 @@ class PlanillaLayout:
     # acumula subhojas de nómina y sin prefijo los rangos podrían escribir
     # en la hoja equivocada.
     worker_file_region: SheetRegion = SheetRegion("principal!C123", "principal!A:B", 1)
+
+    # Celda para el nombre del negocio en el archivo de trabajador (Formato_Trabajadores):
+    # celdas combinadas A2:C2 en la subhoja principal
+    worker_business_name_cell: str = "principal!A2"

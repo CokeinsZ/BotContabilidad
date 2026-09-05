@@ -92,14 +92,27 @@ class WorkerLoanCommand(Command):
             return self._record_loan(ctx, file_id, amount, worker_name)
 
         # Sin archivos similares: crear uno nuevo y registrar.
-        created = ctx.drive.duplicate_workers_template(folder_id, worker_name)
-        if created is None:
+        file_id = self._create_worker_file(ctx, folder_id, worker_name)
+        if file_id is None:
             return [f"⚠️ No se pudo crear el archivo del trabajador '{worker_name}'."]
-        file_id, _ = created
 
         messages = [f"👤 Se creó el archivo del trabajador '{worker_name}'."]
         messages.extend(self._record_loan(ctx, file_id, amount, worker_name))
         return messages
+
+    def _create_worker_file(
+        self, ctx: CommandContext, folder_id: str, worker_name: str
+    ) -> str | None:
+        """Duplica la plantilla para un nuevo trabajador y escribe el nombre del business en A2:C2."""
+        created = ctx.drive.duplicate_workers_template(folder_id, worker_name)
+        if created is None:
+            return None
+        file_id, _ = created
+        layout = ctx.sheets.layout
+        ctx.sheets.set_values(
+            file_id, {layout.worker_business_name_cell: [[ctx.business.name]]}
+        )
+        return file_id
 
     def _record_loan(
         self, ctx: CommandContext, file_id: str, amount: float, worker_name: str
@@ -173,12 +186,11 @@ class WorkerLoanCommand(Command):
                 return self._record_loan(ctx, file_id, amount, worker_name)
 
             if option == new_option:
-                created = ctx.drive.duplicate_workers_template(folder_id, worker_name)
-                if created is None:
+                file_id = self._create_worker_file(ctx, folder_id, worker_name)
+                if file_id is None:
                     return [
                         f"⚠️ No se pudo crear el archivo del trabajador '{worker_name}'."
                     ]
-                file_id, _ = created
                 messages = [f"👤 Se creó el archivo del trabajador '{worker_name}'."]
                 messages.extend(self._record_loan(ctx, file_id, amount, worker_name))
                 return messages
