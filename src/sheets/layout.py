@@ -42,15 +42,15 @@ class PlanillaLayout:
     total_cash_cell: str = "B46"     # saldo total (se propaga al día siguiente)
     totals_range: str = "B38:B46"    # bloque de totales para el resumen
 
-    # Regiones de filas dinámicas
-    expense_region: SheetRegion = SheetRegion("C123", "A:B", 11)
+    # Regiones de filas dinámicas (celda = "última fila" de cada tipo)
+    expense_region: SheetRegion = SheetRegion("C135", "A:B", 11)
     # Préstamos a trabajadores (no pagos: el dinero se descuenta luego)
-    worker_loan_region: SheetRegion = SheetRegion("C124", "C:D", 11)
-    admin_region: SheetRegion = SheetRegion("C125", "E:E", 26)
-    withdraw_region: SheetRegion = SheetRegion("C126", "C:E", 39)
-    investment_region: SheetRegion = SheetRegion("C127", "C:D", 29)
-    cleaning_region: SheetRegion = SheetRegion("C128", "E:E", 11)
-    feeding_region: SheetRegion = SheetRegion("C129", "E:E", 20)
+    worker_loan_region: SheetRegion = SheetRegion("C136", "C:D", 11)
+    admin_region: SheetRegion = SheetRegion("C137", "E:E", 26)
+    withdraw_region: SheetRegion = SheetRegion("C138", "C:E", 39)
+    investment_region: SheetRegion = SheetRegion("C139", "C:D", 29)
+    cleaning_region: SheetRegion = SheetRegion("C140", "E:E", 11)
+    feeding_region: SheetRegion = SheetRegion("C141", "E:E", 20)
 
     # Región del archivo individual de cada trabajador (Formato_Trabajadores):
     # columna A = fecha del préstamo, columna B = monto. Mismo mecanismo de
