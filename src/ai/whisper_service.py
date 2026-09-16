@@ -1,6 +1,8 @@
 """Servicio de transcripción de audio usando Whisper."""
 import httpx
 
+from config.log import log_error
+
 
 class WhisperService:
     """Transcribe audios a texto mediante una instancia externa de Whisper."""
@@ -25,7 +27,11 @@ class WhisperService:
             return response.json().get("text")
 
         except httpx.HTTPStatusError as error:
-            print(f"Error de la API ({error.response.status_code}): {error.response.text}")
+            log_error(
+                "transcribiendo audio en Whisper",
+                error,
+                f"status={error.response.status_code} body={error.response.text[:1000]!r}",
+            )
         except Exception as error:
-            print(f"Error inesperado transcribiendo audio: {error}")
+            log_error("transcribiendo audio en Whisper (inesperado)", error)
         return None

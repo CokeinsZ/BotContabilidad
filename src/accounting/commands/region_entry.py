@@ -4,6 +4,7 @@ from typing import ClassVar
 
 from accounting.commands.base import Command, CommandContext
 from accounting.session_manager import UndoSnapshot
+from config.log import log_error, log_warning
 
 
 class RegionEntryCommand(Command):
@@ -38,13 +39,41 @@ class RegionEntryCommand(Command):
 
         try:
             row = self.build_row(args)
-        except ValueError:
+        except ValueError as error:
+            log_error(
+                f"comando '{self.name}' con monto inválido",
+                error,
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
+                f"sheet_id={ctx.session.active_sheet_id} "
+                f"sheet_name={ctx.session.active_sheet_name!r} args={args}",
+            )
             return self.invalid_amount_message
 
         sheet_id = ctx.session.active_sheet_id
         region = getattr(ctx.sheets.layout, self.region_attr)
 
-        if not ctx.sheets.append_to_region(sheet_id, region, row):
+        try:
+            ok = ctx.sheets.append_to_region(sheet_id, region, row)
+        except Exception as error:
+            log_error(
+                f"comando '{self.name}' falló escribiendo en la planilla (excepción)",
+                error,
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
+                f"sheet_id={sheet_id} sheet_name={ctx.session.active_sheet_name!r} "
+                f"region={region} counter_cell={region.counter_cell} row={row} args={args}",
+            )
+            return "⚠️ No se pudo registrar el movimiento en la planilla."
+
+        if not ok:
+            # El detalle del porqué ya lo logueó SheetsClient; aquí se agrega
+            # el contexto del comando para correlacionar con el mensaje del usuario.
+            log_warning(
+                f"comando '{self.name}' no pudo registrar el movimiento",
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
+                f"sheet_id={sheet_id} sheet_name={ctx.session.active_sheet_name!r} "
+                f"region={region} counter_cell={region.counter_cell} row={row} args={args} "
+                f"-> ver log previo de SheetsClient para la causa raíz",
+            )
             return "⚠️ No se pudo registrar el movimiento en la planilla."
 
         ctx.session.undo_snapshot = UndoSnapshot.single(

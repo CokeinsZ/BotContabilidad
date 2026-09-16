@@ -5,6 +5,7 @@ from typing import ClassVar, Optional, TYPE_CHECKING
 from accounting.commands.base import Command, CommandContext
 from accounting.commands.region_entry import RegionEntryCommand
 from accounting.session_manager import CommandResult, UndoSnapshot
+from config.log import log_error, log_warning
 
 if TYPE_CHECKING:
     from accounting.commands.employee_commands import NominaCommand
@@ -114,14 +115,38 @@ class FixedCellCommand(Command):
 
         try:
             value = self.parse_value(args)
-        except ValueError:
+        except ValueError as error:
+            log_error(
+                f"comando '{self.name}' con monto inválido",
+                error,
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
+                f"sheet_id={ctx.session.active_sheet_id} args={args}",
+            )
             return self.invalid_amount_message
 
         sheet_id = ctx.session.active_sheet_id
         cell = getattr(ctx.sheets.layout, self.cell_attr)
 
         previous_value = ctx.sheets.get_value(sheet_id, cell)
-        if not ctx.sheets.set_values(sheet_id, {cell: [[value]]}):
+        try:
+            ok = ctx.sheets.set_values(sheet_id, {cell: [[value]]})
+        except Exception as error:
+            log_error(
+                f"comando '{self.name}' falló escribiendo celda (excepción)",
+                error,
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
+                f"sheet_id={sheet_id} sheet_name={ctx.session.active_sheet_name!r} "
+                f"cell={cell} value={value!r} previous={previous_value!r} args={args}",
+            )
+            return "⚠️ No se pudo registrar el valor en la planilla."
+        if not ok:
+            log_warning(
+                f"comando '{self.name}' no pudo escribir la celda",
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
+                f"sheet_id={sheet_id} sheet_name={ctx.session.active_sheet_name!r} "
+                f"cell={cell} value={value!r} previous={previous_value!r} args={args} "
+                f"-> ver log previo de SheetsClient para la causa raíz",
+            )
             return "⚠️ No se pudo registrar el valor en la planilla."
 
         ctx.session.undo_snapshot = UndoSnapshot.single(

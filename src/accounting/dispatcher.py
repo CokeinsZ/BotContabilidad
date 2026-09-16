@@ -3,6 +3,7 @@ from typing import Iterable
 
 from accounting.commands.base import Command, CommandContext
 from accounting.session_manager import CommandResult
+from config.log import log_error
 
 
 class CommandDispatcher:
@@ -34,7 +35,21 @@ class CommandDispatcher:
             return [f"⚠️ Comando desconocido: {parts[0].lower()}"]
 
         print(f"Ejecutando comando: {command.name} con argumentos: {args}")
-        return self._normalize(command.execute(ctx, args))
+        try:
+            return self._normalize(command.execute(ctx, args))
+        except Exception as error:
+            log_error(
+                "ejecutando comando (excepción no controlada)",
+                error,
+                f"comando={command.name} args={args} full_command={full_command!r} "
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
+                f"sheet_id={ctx.session.active_sheet_id} "
+                f"sheet_name={ctx.session.active_sheet_name!r}",
+            )
+            return [
+                "⚠️ Ocurrió un error interno al procesar el comando. "
+                "Revisa los logs del servidor para el detalle."
+            ]
 
     def _resolve(self, parts: list[str]) -> tuple[Command | None, list[str]]:
         """Busca primero comandos de dos palabras, luego de una."""

@@ -10,6 +10,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from auth.google_auth_manager import GoogleAuthManager
+from config.log import log_error, log_warning
 from sheets.layout import PlanillaLayout, SheetRegion
 
 
@@ -65,7 +66,18 @@ class SheetsClient:
                     result[requested] = [[]]
             return result
         except HttpError as error:
-            print(f"Error leyendo rangos {ranges} de {sheet_id}: {error}")
+            log_error(
+                "leyendo rangos de Sheets",
+                error,
+                f"sheet_id={sheet_id} ranges={ranges}",
+            )
+            return {}
+        except Exception as error:
+            log_error(
+                "leyendo rangos de Sheets (inesperado)",
+                error,
+                f"sheet_id={sheet_id} ranges={ranges}",
+            )
             return {}
 
     def set_values(self, sheet_id: str, updates: dict[str, list[list]]) -> bool:
@@ -81,9 +93,28 @@ class SheetsClient:
                 .batchUpdate(spreadsheetId=sheet_id, body=body)
                 .execute()
             )
-            return bool(result.get("totalUpdatedCells"))
+            updated = result.get("totalUpdatedCells")
+            if not updated:
+                log_warning(
+                    "escribiendo rangos en Sheets (0 celdas actualizadas)",
+                    f"sheet_id={sheet_id} ranges={list(updates)} "
+                    f"updates={updates} response={result}",
+                )
+                return False
+            return True
         except HttpError as error:
-            print(f"Error escribiendo rangos de {sheet_id}: {error}")
+            log_error(
+                "escribiendo rangos en Sheets",
+                error,
+                f"sheet_id={sheet_id} ranges={list(updates)} updates={updates}",
+            )
+            return False
+        except Exception as error:
+            log_error(
+                "escribiendo rangos en Sheets (inesperado)",
+                error,
+                f"sheet_id={sheet_id} ranges={list(updates)} updates={updates}",
+            )
             return False
 
     def get_value(self, sheet_id: str, range_a1: str) -> str | None:
@@ -98,12 +129,33 @@ class SheetsClient:
     # ------------------------------------------------------------------
     def append_to_region(self, sheet_id: str, region: SheetRegion, values: list) -> bool:
         """Agrega una fila a una región y avanza su contador. 2 llamadas API."""
-        counter = self.get_value(sheet_id, region.counter_cell)
-        if counter is None:
+        try:
+            counter = self.get_value(sheet_id, region.counter_cell)
+        except Exception as error:
+            log_error(
+                "append_to_region leyendo contador",
+                error,
+                f"sheet_id={sheet_id} counter_cell={region.counter_cell} "
+                f"region={region} values={values}",
+            )
+            return False
+        if counter is None or (isinstance(counter, str) and not counter.strip()):
+            log_warning(
+                "append_to_region sin contador (celda vacía o ilegible)",
+                f"sheet_id={sheet_id} counter_cell={region.counter_cell} "
+                f"counter={counter!r} region={region} values={values} "
+                f"-> revisa que la planilla tenga el layout esperado",
+            )
             return False
         try:
             row = int(counter)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as error:
+            log_error(
+                "append_to_region con contador no numérico",
+                error,
+                f"sheet_id={sheet_id} counter_cell={region.counter_cell} "
+                f"counter={counter!r} region={region} values={values}",
+            )
             return False
 
         return self.set_values(
@@ -117,13 +169,29 @@ class SheetsClient:
     def undo_last_entry(self, sheet_id: str, region: SheetRegion) -> bool:
         """Elimina la última fila de una región y retrocede su contador."""
         counter = self.get_value(sheet_id, region.counter_cell)
-        if counter is None:
+        if counter is None or (isinstance(counter, str) and not counter.strip()):
+            log_warning(
+                "undo_last_entry sin contador",
+                f"sheet_id={sheet_id} counter_cell={region.counter_cell} "
+                f"counter={counter!r} region={region}",
+            )
             return False
         try:
             target_row = int(counter) - 1
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as error:
+            log_error(
+                "undo_last_entry con contador no numérico",
+                error,
+                f"sheet_id={sheet_id} counter_cell={region.counter_cell} "
+                f"counter={counter!r} region={region}",
+            )
             return False
         if target_row < region.min_row:
+            log_warning(
+                "undo_last_entry fuera de rango (nada que deshacer)",
+                f"sheet_id={sheet_id} target_row={target_row} "
+                f"min_row={region.min_row} region={region}",
+            )
             return False
 
         try:
@@ -132,7 +200,20 @@ class SheetsClient:
                 body={"ranges": [region.row_range(target_row)]},
             ).execute()
         except HttpError as error:
-            print(f"Error limpiando fila {target_row} de {sheet_id}: {error}")
+            log_error(
+                "limpiando fila en Sheets",
+                error,
+                f"sheet_id={sheet_id} target_row={target_row} "
+                f"range={region.row_range(target_row)}",
+            )
+            return False
+        except Exception as error:
+            log_error(
+                "limpiando fila en Sheets (inesperado)",
+                error,
+                f"sheet_id={sheet_id} target_row={target_row} "
+                f"range={region.row_range(target_row)}",
+            )
             return False
 
         return self.set_values(sheet_id, {region.counter_cell: [[target_row]]})
@@ -173,9 +254,24 @@ class SheetsClient:
             for sheet in spreadsheet.get("sheets", []):
                 if sheet["properties"]["title"] == sheet_name:
                     return sheet["properties"]["sheetId"]
+            log_warning(
+                "hoja no encontrada en spreadsheet",
+                f"spreadsheet_id={spreadsheet_id} sheet_name={sheet_name!r}",
+            )
             return None
         except HttpError as error:
-            print(f"Error obteniendo sheetId de '{sheet_name}': {error}")
+            log_error(
+                "obteniendo sheetId",
+                error,
+                f"spreadsheet_id={spreadsheet_id} sheet_name={sheet_name!r}",
+            )
+            return None
+        except Exception as error:
+            log_error(
+                "obteniendo sheetId (inesperado)",
+                error,
+                f"spreadsheet_id={spreadsheet_id} sheet_name={sheet_name!r}",
+            )
             return None
 
     def duplicate_sheet(self, spreadsheet_id: str, source_sheet_id: int, new_name: str) -> int | None:
@@ -196,7 +292,20 @@ class SheetsClient:
             new_sheet_id = response["replies"][0]["duplicateSheet"]["properties"]["sheetId"]
             return new_sheet_id
         except HttpError as error:
-            print(f"Error duplicando hoja {source_sheet_id} a '{new_name}': {error}")
+            log_error(
+                "duplicando hoja",
+                error,
+                f"spreadsheet_id={spreadsheet_id} source_sheet_id={source_sheet_id} "
+                f"new_name={new_name!r}",
+            )
+            return None
+        except Exception as error:
+            log_error(
+                "duplicando hoja (inesperado)",
+                error,
+                f"spreadsheet_id={spreadsheet_id} source_sheet_id={source_sheet_id} "
+                f"new_name={new_name!r}",
+            )
             return None
 
     def delete_rows(self, spreadsheet_id: str, sheet_id: int, start_row: int, end_row: int) -> bool:
@@ -220,7 +329,20 @@ class SheetsClient:
             ).execute()
             return True
         except HttpError as error:
-            print(f"Error borrando filas {start_row}-{end_row} de hoja {sheet_id}: {error}")
+            log_error(
+                "borrando filas",
+                error,
+                f"spreadsheet_id={spreadsheet_id} sheet_id={sheet_id} "
+                f"rows={start_row}-{end_row}",
+            )
+            return False
+        except Exception as error:
+            log_error(
+                "borrando filas (inesperado)",
+                error,
+                f"spreadsheet_id={spreadsheet_id} sheet_id={sheet_id} "
+                f"rows={start_row}-{end_row}",
+            )
             return False
 
     def clear_range(self, spreadsheet_id: str, range_a1: str, fill_value: str | int = "") -> bool:
@@ -235,7 +357,18 @@ class SheetsClient:
             fill_values = [[fill_value] * cols for _ in range(rows)]
             return self.set_values(spreadsheet_id, {range_a1: fill_values})
         except HttpError as error:
-            print(f"Error limpiando rango {range_a1}: {error}")
+            log_error(
+                "limpiando rango",
+                error,
+                f"spreadsheet_id={spreadsheet_id} range={range_a1!r}",
+            )
+            return False
+        except Exception as error:
+            log_error(
+                "limpiando rango (inesperado)",
+                error,
+                f"spreadsheet_id={spreadsheet_id} range={range_a1!r}",
+            )
             return False
 
     def clear_range_a1(self, spreadsheet_id: str, range_a1: str, fill_value: str | int = "") -> bool:
@@ -281,10 +414,18 @@ class SheetsClient:
             # Usar el range_a1 original (con nombre de hoja si lo tenía) para la escritura
             return self.set_values(spreadsheet_id, {range_a1: fill_values})
         except HttpError as error:
-            print(f"Error limpiando rango {range_a1}: {error}")
+            log_error(
+                "limpiando rango A1",
+                error,
+                f"spreadsheet_id={spreadsheet_id} range={range_a1!r}",
+            )
             return False
         except Exception as error:
-            print(f"Error parseando rango {range_a1}: {error}")
+            log_error(
+                "limpiando rango A1 / parseando rango",
+                error,
+                f"spreadsheet_id={spreadsheet_id} range={range_a1!r}",
+            )
             return False
 
     def reset_counter(self, spreadsheet_id: str, counter_cell: str, value: int) -> bool:

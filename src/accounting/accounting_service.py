@@ -2,6 +2,7 @@
 from accounting.commands.base import CommandContext
 from accounting.dispatcher import CommandDispatcher
 from accounting.session_manager import CommandResult, SessionManager
+from config.log import log_error
 from database.business_repository import BusinessRepository
 from drive.drive_client import DriveClient
 from sheets.sheets_client import SheetsClient
@@ -59,14 +60,28 @@ class AccountingService:
 
         # Una selección pendiente se responde con un número y NO pasa por el
         # dispatcher de comandos. Si llega otra cosa, la selección se cancela.
-        if session.pending_selection is not None:
-            if full_command.strip().isdigit():
-                pending = session.pending_selection
+        try:
+            if session.pending_selection is not None:
+                if full_command.strip().isdigit():
+                    pending = session.pending_selection
+                    session.pending_selection = None
+                    return self._normalize(pending.resolver(ctx, full_command.strip()))
                 session.pending_selection = None
-                return self._normalize(pending.resolver(ctx, full_command.strip()))
-            session.pending_selection = None
 
-        return self._dispatcher.dispatch(ctx, full_command)
+            return self._dispatcher.dispatch(ctx, full_command)
+        except Exception as error:
+            log_error(
+                "procesando comando en AccountingService",
+                error,
+                f"phone={phone_number} business_id={business_context.business.id} "
+                f"full_command={full_command!r} "
+                f"sheet_id={session.active_sheet_id} "
+                f"sheet_name={session.active_sheet_name!r}",
+            )
+            return [
+                "⚠️ Ocurrió un error interno al procesar el comando. "
+                "Revisa los logs del servidor para el detalle."
+            ]
 
     def has_pending_selection(self, phone_number: str) -> bool:
         """True si el usuario tiene una selección pendiente por responder."""

@@ -1,6 +1,7 @@
 """Endpoints HTTP del módulo de WhatsApp (webhook de Evolution API)."""
 from fastapi import APIRouter, Request
 
+from config.log import log_error
 from whatsapp.whatsapp_service import WhatsAppService
 
 
@@ -17,7 +18,16 @@ def create_whatsapp_router(service: WhatsAppService) -> APIRouter:
         except Exception as error:
             # Dejar rastro en los logs: Evolution reintenta o descarta según
             # el código, pero sin este print el fallo era invisible.
-            print(f"Error procesando mensaje entrante: {error}")
+            # Se incluye traceback + body parcial para poder reproducir.
+            try:
+                preview = str(body)[:2000] if "body" in dir() else "<sin body>"
+            except Exception:
+                preview = "<body no serializable>"
+            log_error(
+                "procesando webhook messages-upsert",
+                error,
+                f"body={preview}",
+            )
             return {"status": "error", "message": str(error)}
 
     return router

@@ -4,6 +4,7 @@ from accounting.commands.base import Command, CommandContext
 from accounting.commands.region_entry import RegionEntryCommand
 from accounting.session_manager import CommandResult, PendingSelection, UndoSnapshot
 from accounting.sheet_naming import base_date_of
+from config.log import log_error, log_warning
 
 
 class WorkerLoanCommand(Command):
@@ -33,7 +34,12 @@ class WorkerLoanCommand(Command):
 
         try:
             amount = self.parse_amount(args[0])
-        except ValueError:
+        except ValueError as error:
+            log_error(
+                "comando 'trabajador' con monto inválido",
+                error,
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} args={args}",
+            )
             return "⚠️ El monto del préstamo debe ser un número válido."
         worker_name = " ".join(args[1:])
         worker_name = worker_name.lower().replace("é", "e").replace("á", "a").replace("í", "i").replace("ó", "o").replace("ú", "u").strip()  # Normalizar acentos y espacios para la búsqueda de archivos
@@ -56,7 +62,25 @@ class WorkerLoanCommand(Command):
         sheet_id = ctx.session.active_sheet_id
         region = ctx.sheets.layout.worker_loan_region
 
-        if not ctx.sheets.append_to_region(sheet_id, region, [worker_name, amount]):
+        try:
+            ok = ctx.sheets.append_to_region(sheet_id, region, [worker_name, amount])
+        except Exception as error:
+            log_error(
+                "comando 'trabajador' falló en planilla diaria (excepción)",
+                error,
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
+                f"sheet_id={sheet_id} region={region} "
+                f"worker={worker_name!r} amount={amount} args={args}",
+            )
+            return ["⚠️ No se pudo registrar el préstamo en la planilla."]
+        if not ok:
+            log_warning(
+                "comando 'trabajador' no pudo registrar en planilla diaria",
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
+                f"sheet_id={sheet_id} sheet_name={ctx.session.active_sheet_name!r} "
+                f"region={region} worker={worker_name!r} amount={amount} "
+                f"-> ver log previo de SheetsClient",
+            )
             return ["⚠️ No se pudo registrar el préstamo en la planilla."]
 
         # Guardar info para el undo del archivo del trabajador (se completa después)
@@ -94,6 +118,12 @@ class WorkerLoanCommand(Command):
         # Sin archivos similares: crear uno nuevo y registrar.
         file_id = self._create_worker_file(ctx, folder_id, worker_name)
         if file_id is None:
+            log_warning(
+                "comando 'trabajador' no pudo crear archivo de trabajador",
+                f"business_id={ctx.business.id} folder_id={folder_id} "
+                f"worker={worker_name!r} amount={amount} "
+                f"-> ver log previo de DriveClient",
+            )
             return [f"⚠️ No se pudo crear el archivo del trabajador '{worker_name}'."]
 
         messages = [f"👤 Se creó el archivo del trabajador '{worker_name}'."]
@@ -125,7 +155,25 @@ class WorkerLoanCommand(Command):
             sheet_date = ""
 
         region = ctx.sheets.layout.worker_file_region
-        if not ctx.sheets.append_to_region(file_id, region, [sheet_date, amount]):
+        try:
+            ok = ctx.sheets.append_to_region(file_id, region, [sheet_date, amount])
+        except Exception as error:
+            log_error(
+                "comando 'trabajador' falló en archivo individual (excepción)",
+                error,
+                f"business_id={ctx.business.id} file_id={file_id} region={region} "
+                f"worker={worker_name!r} amount={amount} date={sheet_date!r}",
+            )
+            return [
+                f"⚠️ No se pudo registrar el préstamo en el archivo de '{worker_name}'."
+            ]
+        if not ok:
+            log_warning(
+                "comando 'trabajador' no pudo escribir en archivo individual",
+                f"business_id={ctx.business.id} file_id={file_id} region={region} "
+                f"worker={worker_name!r} amount={amount} date={sheet_date!r} "
+                f"-> ver log previo de SheetsClient",
+            )
             return [
                 f"⚠️ No se pudo registrar el préstamo en el archivo de '{worker_name}'."
             ]
@@ -260,7 +308,12 @@ class NominaCommand(Command):
 
         try:
             amount = self.parse_amount(args[0])
-        except ValueError:
+        except ValueError as error:
+            log_error(
+                "comando 'nomina' con monto inválido",
+                error,
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} args={args}",
+            )
             return "⚠️ El monto debe ser un número válido."
         worker_name = " ".join(args[1:])
         worker_name = worker_name.lower().replace("é", "e").replace("á", "a").replace("í", "i").replace("ó", "o").replace("ú", "u").strip()  # Normalizar acentos y espacios para la búsqueda de archivos
@@ -268,7 +321,24 @@ class NominaCommand(Command):
         # 1. Registrar el pago en la planilla diaria (región de trabajadores).
         sheet_id = ctx.session.active_sheet_id
         region = ctx.sheets.layout.worker_loan_region
-        if not ctx.sheets.append_to_region(sheet_id, region, [worker_name, amount]):
+        try:
+            ok = ctx.sheets.append_to_region(sheet_id, region, [worker_name, amount])
+        except Exception as error:
+            log_error(
+                "comando 'nomina' falló en planilla diaria (excepción)",
+                error,
+                f"business_id={ctx.business.id} sheet_id={sheet_id} region={region} "
+                f"worker={worker_name!r} amount={amount} args={args}",
+            )
+            return "⚠️ No se pudo registrar el pago en la planilla diaria."
+        if not ok:
+            log_warning(
+                "comando 'nomina' no pudo registrar en planilla diaria",
+                f"business_id={ctx.business.id} sheet_id={sheet_id} "
+                f"sheet_name={ctx.session.active_sheet_name!r} region={region} "
+                f"worker={worker_name!r} amount={amount} "
+                f"-> ver log previo de SheetsClient",
+            )
             return "⚠️ No se pudo registrar el pago en la planilla diaria."
 
         ctx.session.undo_snapshot = UndoSnapshot.single(
@@ -338,9 +408,18 @@ class NominaCommand(Command):
 
         # 2. Duplicar hoja principal, borrar filas 1-9, renombrar a fecha de hoy
         main_sheet_id = ""
-        spreadsheet = ctx.sheets.service.spreadsheets().get(
-            spreadsheetId=file_id, fields="sheets(properties(sheetId,title))"
-        ).execute()
+        try:
+            spreadsheet = ctx.sheets.service.spreadsheets().get(
+                spreadsheetId=file_id, fields="sheets(properties(sheetId,title))"
+            ).execute()
+        except Exception as error:
+            log_error(
+                "nómina listando hojas del archivo de trabajador",
+                error,
+                f"business_id={ctx.business.id} file_id={file_id} "
+                f"worker={worker_name!r}",
+            )
+            return [f"⚠️ No se pudo leer el archivo de '{worker_name}'."]
         sheets_props = spreadsheet.get("sheets", [])
         if not sheets_props:
             return [f"⚠️ No se encontraron hojas en el archivo de '{worker_name}'."]
@@ -353,10 +432,22 @@ class NominaCommand(Command):
 
         new_sheet_id = ctx.sheets.duplicate_sheet(file_id, main_sheet_id, today)
         if new_sheet_id is None:
+            log_warning(
+                "nómina no pudo duplicar hoja principal",
+                f"business_id={ctx.business.id} file_id={file_id} "
+                f"main_sheet_id={main_sheet_id} today={today} worker={worker_name!r} "
+                f"-> ver log previo de SheetsClient",
+            )
             return [f"⚠️ No se pudo crear la hoja de nómina para '{worker_name}'."]
 
         # Borrar filas 1-9 (índices 0-8) en la nueva hoja
         if not ctx.sheets.delete_rows(file_id, new_sheet_id, 1, 10):
+            log_warning(
+                "nómina no pudo borrar filas 1-9",
+                f"business_id={ctx.business.id} file_id={file_id} "
+                f"new_sheet_id={new_sheet_id} worker={worker_name!r} "
+                f"-> ver log previo de SheetsClient",
+            )
             return ["⚠️ No se pudieron borrar las filas 1-9 en la hoja de nómina."]
 
         # 3. Limpiar hoja principal: A13:A28 vacíos, B13:B28 ceros, C13:C28 vacíos, C123=13

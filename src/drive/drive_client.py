@@ -15,6 +15,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from auth.google_auth_manager import GoogleAuthManager
+from config.log import log_error, log_warning
 
 _MONTH_NAMES = [
     "enero", "febrero", "marzo", "abril", "mayo", "junio",
@@ -85,7 +86,19 @@ class DriveClient:
             files = response.get("files", [])
             return files[0]["id"] if files else None
         except HttpError as error:
-            print(f"Error buscando la planilla '{sheet_name}': {error}")
+            log_error(
+                "buscando planilla en Drive",
+                error,
+                f"folder_id={folder_id} sheet_name={sheet_name!r} "
+                f"month_folder={month_folder_name!r}",
+            )
+            return None
+        except Exception as error:
+            log_error(
+                "buscando planilla en Drive (inesperado)",
+                error,
+                f"folder_id={folder_id} sheet_name={sheet_name!r}",
+            )
             return None
 
     def duplicate_template(
@@ -98,7 +111,10 @@ class DriveClient:
         """
         month_folder_name = self.month_folder_name_for(new_name)
         if month_folder_name is None:
-            print(f"Formato de fecha inválido: '{new_name}'. Usa dd-mm-aaaa")
+            log_warning(
+                "duplicar plantilla con fecha inválida",
+                f"new_name={new_name!r} (usa dd-mm-aaaa)",
+            )
             return None
 
         month_folder_id = self._find_folder(folder_id, month_folder_name)
@@ -130,7 +146,20 @@ class DriveClient:
             )
             return copied_file.get("id"), copied_file.get("name")
         except HttpError as error:
-            print(f"Error al duplicar el archivo '{new_name}': {error}")
+            log_error(
+                "duplicando archivo en Drive",
+                error,
+                f"template_id={template_id} new_name={new_name!r} "
+                f"parent_folder_id={parent_folder_id}",
+            )
+            return None
+        except Exception as error:
+            log_error(
+                "duplicando archivo en Drive (inesperado)",
+                error,
+                f"template_id={template_id} new_name={new_name!r} "
+                f"parent_folder_id={parent_folder_id}",
+            )
             return None
 
     # ------------------------------------------------------------------
@@ -184,7 +213,18 @@ class DriveClient:
                     break
             return files
         except HttpError as error:
-            print(f"Error listando archivos de la carpeta {folder_id}: {error}")
+            log_error(
+                "listando archivos de carpeta en Drive",
+                error,
+                f"folder_id={folder_id}",
+            )
+            return []
+        except Exception as error:
+            log_error(
+                "listando archivos de carpeta en Drive (inesperado)",
+                error,
+                f"folder_id={folder_id}",
+            )
             return []
 
     @staticmethod
@@ -216,7 +256,18 @@ class DriveClient:
             files = response.get("files", [])
             return files[0]["id"] if files else None
         except HttpError as error:
-            print(f"Error buscando la carpeta '{folder_name}': {error}")
+            log_error(
+                "buscando carpeta en Drive",
+                error,
+                f"parent_id={parent_id} folder_name={folder_name!r}",
+            )
+            return None
+        except Exception as error:
+            log_error(
+                "buscando carpeta en Drive (inesperado)",
+                error,
+                f"parent_id={parent_id} folder_name={folder_name!r}",
+            )
             return None
 
     def _create_folder(self, parent_id: str, folder_name: str) -> str | None:
@@ -233,7 +284,18 @@ class DriveClient:
             )
             return folder.get("id")
         except HttpError as error:
-            print(f"Error creando la carpeta '{folder_name}': {error}")
+            log_error(
+                "creando carpeta en Drive",
+                error,
+                f"parent_id={parent_id} folder_name={folder_name!r}",
+            )
+            return None
+        except Exception as error:
+            log_error(
+                "creando carpeta en Drive (inesperado)",
+                error,
+                f"parent_id={parent_id} folder_name={folder_name!r}",
+            )
             return None
 
     # ------------------------------------------------------------------

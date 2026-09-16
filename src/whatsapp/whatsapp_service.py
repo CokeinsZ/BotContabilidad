@@ -7,6 +7,7 @@ import httpx
 from accounting.accounting_service import AccountingService
 from ai.deepseek_service import DeepSeekService
 from ai.whisper_service import WhisperService
+from config.log import log_error, log_warning
 from whatsapp.dto import IncomingMessage
 
 
@@ -46,9 +47,25 @@ class WhatsAppService:
         )
 
         if message.is_audio:
-            command = await self._audio_to_command(message.key.id)
+            try:
+                command = await self._audio_to_command(message.key.id)
+            except Exception as error:
+                log_error(
+                    "convirtiendo audio a comando",
+                    error,
+                    f"phone={message.phone_number} message_id={message.key.id}",
+                )
+                return
         else:
-            command = await self._text_to_command(message.text, message.phone_number)
+            try:
+                command = await self._text_to_command(message.text, message.phone_number)
+            except Exception as error:
+                log_error(
+                    "convirtiendo texto a comando (DeepSeek)",
+                    error,
+                    f"phone={message.phone_number} text={message.text!r}",
+                )
+                return
 
         if not command:
             print(f"No se pudo extraer un comando del mensaje de {message.phone_number}")
@@ -58,9 +75,23 @@ class WhatsAppService:
 
         # Las llamadas a Google son síncronas: se ejecutan en un hilo aparte
         # para no bloquear el event loop del servidor.
-        responses = await asyncio.to_thread(
-            self._accounting.handle_command, message.phone_number, command
-        )
+        try:
+            responses = await asyncio.to_thread(
+                self._accounting.handle_command, message.phone_number, command
+            )
+        except Exception as error:
+            log_error(
+                "procesando comando de WhatsApp",
+                error,
+                f"phone={message.phone_number} command={command!r} "
+                f"remote_jid={message.key.remote_jid}",
+            )
+            await self.send_message(
+                message.key.remote_jid,
+                "⚠️ Ocurrió un error interno al procesar tu mensaje. "
+                "Revisa los logs del servidor para el detalle.",
+            )
+            return
         for response in responses:
             if response:
                 await self.send_message(message.key.remote_jid, response)
@@ -80,9 +111,11 @@ class WhatsAppService:
             print(f"Mensaje enviado a {to}: {message}")
 
         except httpx.HTTPError as error:
-            print(f"Error al enviar mensaje: {error}")
+            log_error("enviando mensaje de WhatsApp", error, f"to={to} text={message!r}")
         except Exception as error:
-            print(f"Error inesperado al enviar mensaje: {error}")
+            log_error(
+                "enviando mensaje de WhatsApp (inesperado)", error, f"to={to} text={message!r}"
+            )
 
     # ------------------------------------------------------------------
     # Conversión de entrada a comando
@@ -124,13 +157,16 @@ class WhatsAppService:
 
             base64_audio = response.json().get("base64")
             if not base64_audio:
-                print(f"No se obtuvo audio base64 para el mensaje {message_id}")
+                log_warning(
+                    "audio sin contenido base64",
+                    f"message_id={message_id} response={response.text[:500]!r}",
+                )
                 return None
 
             return base64.b64decode(base64_audio)
 
         except httpx.HTTPError as error:
-            print(f"Error al obtener audio: {error}")
+            log_error("obteniendo audio de Evolution", error, f"message_id={message_id}")
         except Exception as error:
-            print(f"Error procesando audio: {error}")
+            log_error("procesando audio (inesperado)", error, f"message_id={message_id}")
         return None

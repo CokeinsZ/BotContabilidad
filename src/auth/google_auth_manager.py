@@ -166,7 +166,9 @@ class GoogleAuthManager:
             self._ready.set()
             return True
         except Exception as error:
-            print(f"Error al refrescar el token de Google: {error}")
+            from config.log import log_error
+
+            log_error("refrescando token de Google", error)
             return False
 
     def wait_until_ready(self, timeout: float | None = None) -> Credentials | None:

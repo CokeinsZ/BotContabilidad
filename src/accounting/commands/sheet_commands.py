@@ -8,6 +8,7 @@ from accounting.sheet_naming import (
     base_date_of,
     sheet_name_for,
 )
+from config.log import log_warning
 
 
 def _initialize_new_sheet(
@@ -66,6 +67,12 @@ class SelectSheetCommand(Command):
         # 2. Crear duplicando la plantilla en la carpeta del mes.
         duplicated = ctx.drive.duplicate_template(folder_id, sheet_name)
         if duplicated is None:
+            log_warning(
+                "comando 'hoja' no pudo crear la planilla",
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
+                f"folder_id={folder_id} sheet_name={sheet_name!r} "
+                f"-> ver log previo de DriveClient",
+            )
             return f"⚠️ No se pudo crear o encontrar la planilla: '{sheet_name}'."
         sheet_id, _ = duplicated
 
@@ -76,6 +83,12 @@ class SelectSheetCommand(Command):
 
         # 4. Inicializar la planilla nueva con una sola escritura por lotes.
         if not _initialize_new_sheet(ctx, sheet_id, sheet_name, previous_sheet_id):
+            log_warning(
+                "comando 'hoja' creó la planilla pero no pudo inicializarla",
+                f"business_id={ctx.business.id} sheet_id={sheet_id} "
+                f"sheet_name={sheet_name!r} previous_sheet_id={previous_sheet_id} "
+                f"-> ver log previo de SheetsClient",
+            )
             return f"⚠️ La planilla '{sheet_name}' se creó pero no pudo inicializarse."
 
         ctx.session.set_active_sheet(sheet_id, sheet_name)
@@ -140,11 +153,23 @@ class AdditionalSheetCommand(Command):
         # 3. Crear duplicando la plantilla en la carpeta del mes.
         duplicated = ctx.drive.duplicate_template(folder_id, sheet_name)
         if duplicated is None:
+            log_warning(
+                f"comando '{self.name}' no pudo crear la planilla",
+                f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
+                f"folder_id={folder_id} sheet_name={sheet_name!r} "
+                f"-> ver log previo de DriveClient",
+            )
             return f"⚠️ No se pudo crear la planilla: '{sheet_name}'."
         sheet_id, _ = duplicated
 
         # 4. Inicializar: B42 = saldo total (B46) de la planilla anterior del día.
         if not _initialize_new_sheet(ctx, sheet_id, date_str, previous_id):
+            log_warning(
+                f"comando '{self.name}' creó la planilla pero no pudo inicializarla",
+                f"business_id={ctx.business.id} sheet_id={sheet_id} "
+                f"sheet_name={sheet_name!r} previous_id={previous_id} "
+                f"-> ver log previo de SheetsClient",
+            )
             return f"⚠️ La planilla '{sheet_name}' se creó pero no pudo inicializarse."
 
         ctx.session.set_active_sheet(sheet_id, sheet_name)
