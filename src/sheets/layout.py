@@ -39,8 +39,8 @@ class PlanillaLayout:
 
     day_cash_cell: str = "B39"       # efectivo del día
     generated_cash_cell: str = "B42" # saldo de caja registrado / saldo previo
-    total_cash_cell: str = "B46"     # saldo total (se propaga al día siguiente)
-    totals_range: str = "B38:B46"    # bloque de totales para el resumen
+    total_cash_cell: str = "B58"     # saldo total (se propaga al día siguiente)
+    totals_range: str = "B38:B58"    # bloque de totales para el resumen
 
     # Regiones de filas dinámicas (celda = "última fila" de cada tipo)
     expense_region: SheetRegion = SheetRegion("C135", "A:B", 11)
