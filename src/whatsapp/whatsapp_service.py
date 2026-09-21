@@ -1,134 +1,172 @@
+"""Servicio de WhatsApp: recepción y envío de mensajes vía Evolution API."""
+import asyncio
 import base64
+
 import httpx
 
-from config import EVOLUTION_API_BASE_URL, EVOLUTION_API_INSTANCE_NAME, EVOLUTION_API_TOKEN
-#from ai.ollama_service import OllamaService
+from accounting.accounting_service import AccountingService
 from ai.deepseek_service import DeepSeekService
 from ai.whisper_service import WhisperService
+from config.log import log_error, log_warning
+from whatsapp.dto import IncomingMessage
+
 
 class WhatsAppService:
-    def __init__(self, dispatcher):
-        self.dispatcher = dispatcher
-        
-        self.base_url = EVOLUTION_API_BASE_URL
-        self.instance_name = EVOLUTION_API_INSTANCE_NAME
-        self.token = EVOLUTION_API_TOKEN
-        self.client = httpx.AsyncClient()
+    """Orquesta el flujo: mensaje -> (audio->texto) -> comando -> respuesta."""
 
-        self.whisper_service = WhisperService()
-        self.deepseek_service = DeepSeekService()
+    def __init__(
+        self,
+        evolution_base_url: str,
+        evolution_instance_name: str,
+        evolution_token: str,
+        whisper_service: WhisperService,
+        deepseek_service: DeepSeekService,
+        accounting_service: AccountingService,
+    ):
+        self._base_url = evolution_base_url
+        self._instance_name = evolution_instance_name
+        self._token = evolution_token
+        self._client = httpx.AsyncClient()
 
-    async def handle_incoming_message(self, body):
-        """
+        self._whisper = whisper_service
+        self._deepseek = deepseek_service
+        self._accounting = accounting_service
 
-        Args:
-            body: El cuerpo del mensaje entrante.
-        """
+    async def handle_incoming_message(self, body: dict) -> None:
+        """Procesa un webhook `messages-upsert` de Evolution API."""
+        message = IncomingMessage.from_webhook(body)
 
-        remote_jid = body.get("data", {}).get("key", {}).get("remoteJid")
+        reason = message.ignore_reason
+        if reason:
+            print(f"Mensaje ignorado: {reason}")
+            return
 
-        if (body.get("data", {}).get("messageType") == "audioMessage"):
-            message_id = body.get('data', {}).get('key', {}).get('id')
-            return await self._process_audio_message(message_id, remote_jid)
+        print(
+            f"Mensaje recibido de {message.phone_number} "
+            f"({'audio' if message.is_audio else 'texto'})"
+        )
+
+        if message.is_audio:
+            try:
+                command = await self._audio_to_command(message.key.id)
+            except Exception as error:
+                log_error(
+                    "convirtiendo audio a comando",
+                    error,
+                    f"phone={message.phone_number} message_id={message.key.id}",
+                )
+                return
         else:
-            message = body.get("data", {}).get("message", {}).get("conversation")
-            return await self._process_text_message(message, remote_jid)
-        
-    async def send_message(self, to, message):
-        """
-        Envía un mensaje de texto a través de la API de Evolution.
+            try:
+                command = await self._text_to_command(message.text, message.phone_number)
+            except Exception as error:
+                log_error(
+                    "convirtiendo texto a comando (DeepSeek)",
+                    error,
+                    f"phone={message.phone_number} text={message.text!r}",
+                )
+                return
 
-        Args:
-            to: El destinatario del mensaje.
-            message: El contenido del mensaje.
-        """
+        if not command:
+            print(f"No se pudo extraer un comando del mensaje de {message.phone_number}")
+            return
+
+        print(f"Comando extraído: '{command}' (de {message.phone_number})")
+
+        # Las llamadas a Google son síncronas: se ejecutan en un hilo aparte
+        # para no bloquear el event loop del servidor.
         try:
-            url = f"{self.base_url}/message/sendText/{self.instance_name}"
-            
-            payload = {
-                "number": to,
-                "text": message
-            }
-            
-            response = await self.client.post(
+            responses = await asyncio.to_thread(
+                self._accounting.handle_command, message.phone_number, command
+            )
+        except Exception as error:
+            log_error(
+                "procesando comando de WhatsApp",
+                error,
+                f"phone={message.phone_number} command={command!r} "
+                f"remote_jid={message.key.remote_jid}",
+            )
+            await self.send_message(
+                message.key.remote_jid,
+                "⚠️ Ocurrió un error interno al procesar tu mensaje. "
+                "Revisa los logs del servidor para el detalle.",
+            )
+            return
+        for response in responses:
+            if response:
+                await self.send_message(message.key.remote_jid, response)
+
+    async def send_message(self, to: str, message: str) -> None:
+        """Envía un mensaje de texto a través de Evolution API."""
+        try:
+            url = f"{self._base_url}/message/sendText/{self._instance_name}"
+            payload = {"number": to, "text": message}
+
+            response = await self._client.post(
                 url,
                 json=payload,
-                headers = {
-                    'Content-Type': 'application/json',
-                    'apikey': self.token
-                }
+                headers={"Content-Type": "application/json", "apikey": self._token},
             )
             response.raise_for_status()
             print(f"Mensaje enviado a {to}: {message}")
-            
-        except httpx.HTTPError as e:
-            print(f"Error al enviar mensaje: {e}")
-        except Exception as e:
-            print(f"Error inesperado al enviar mensaje: {e}")
 
-    async def _process_audio_message(self, message_id, remote_jid):
-        """
-        Procesa un mensaje de audio entrante.
+        except httpx.HTTPError as error:
+            log_error("enviando mensaje de WhatsApp", error, f"to={to} text={message!r}")
+        except Exception as error:
+            log_error(
+                "enviando mensaje de WhatsApp (inesperado)", error, f"to={to} text={message!r}"
+            )
 
-        Args:
-            message_id: El ID del mensaje de audio.
-            remote_jid: El identificador del remitente.
-        """
+    # ------------------------------------------------------------------
+    # Conversión de entrada a comando
+    # ------------------------------------------------------------------
+    async def _text_to_command(self, text: str | None, phone_number: str) -> str | None:
+        if not text:
+            return None
+        # Si el usuario está respondiendo una selección pendiente con un
+        # número, NO pasar por la IA: el número es la respuesta directa.
+        if text.strip().isdigit() and await asyncio.to_thread(
+            self._accounting.has_pending_selection, phone_number
+        ):
+            return text.strip()
+        return await self._deepseek.extract_commands(text)
+
+    async def _audio_to_command(self, message_id: str) -> str | None:
         audio_binary = await self._get_audio_binaries(message_id)
-        audio_transcription = await self.whisper_service.transcribe_audio(audio_binary)
-        command = await self.deepseek_service.extract_commands(audio_transcription)
+        if not audio_binary:
+            return None
+        transcription = await self._whisper.transcribe_audio(audio_binary)
+        if not transcription:
+            return None
+        return await self._deepseek.extract_commands(transcription)
 
-        response = self.dispatcher.run(command)
-        if response:
-            await self.send_message(remote_jid, response)
-   
-    async def _process_text_message(self, message, remote_jid):
-        """
-        Procesa un mensaje de texto entrante.
-
-        Args:
-            message: El mensaje entrante.
-        """
-        command = await self.deepseek_service.extract_commands(message)
-
-        response = self.dispatcher.run(command)
-        if response:
-            await self.send_message(remote_jid, response)
-
-    async def _get_audio_binaries(self, message_id):
+    async def _get_audio_binaries(self, message_id: str) -> bytes | None:
         try:
-            # Obtener el base64 del audio
-            url = f"{self.base_url}/chat/getBase64FromMediaMessage/{self.instance_name}"
-            
+            url = f"{self._base_url}/chat/getBase64FromMediaMessage/{self._instance_name}"
             payload = {
-                "message": {
-                    "key": {
-                        "id": message_id
-                    }
-                },
-                "convertToMp4": False
+                "message": {"key": {"id": message_id}},
+                "convertToMp4": False,
             }
-            
-            response = await self.client.post(
+
+            response = await self._client.post(
                 url,
                 json=payload,
-                headers = {
-                    'Content-Type': 'application/json',
-                    'apikey': self.token
-                }
+                headers={"Content-Type": "application/json", "apikey": self._token},
             )
             response.raise_for_status()
-            
-            data = response.json()
-            base64_audio = data.get("base64")
-            
+
+            base64_audio = response.json().get("base64")
             if not base64_audio:
-                print(f"No se obtuvo audio base64 para el mensaje {message_id}")
-                return
-            
-            # Convertir base64 a binario
-            return base64.b64decode(base64_audio)            
-        except httpx.HTTPError as e:
-            print(f"Error al obtener audio: {e}")
-        except Exception as e:
-            print(f"Error procesando audio: {e}")
+                log_warning(
+                    "audio sin contenido base64",
+                    f"message_id={message_id} response={response.text[:500]!r}",
+                )
+                return None
+
+            return base64.b64decode(base64_audio)
+
+        except httpx.HTTPError as error:
+            log_error("obteniendo audio de Evolution", error, f"message_id={message_id}")
+        except Exception as error:
+            log_error("procesando audio (inesperado)", error, f"message_id={message_id}")
+        return None

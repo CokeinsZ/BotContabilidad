@@ -1,38 +1,37 @@
+"""Servicio de transcripción de audio usando Whisper."""
 import httpx
 
-from config import WHISPER_URL
+from config.log import log_error
+
 
 class WhisperService:
-    def __init__(self):
-        self.whisper_url = WHISPER_URL
-        self.client = httpx.AsyncClient()
+    """Transcribe audios a texto mediante una instancia externa de Whisper."""
 
-    async def transcribe_audio(self, audio_binary):
-        """
-        Transcribe el audio utilizando whisper.
-        Args:
-            audio_binary: El audio en formato binario.
-        """
+    def __init__(self, whisper_url: str):
+        self._whisper_url = whisper_url
+        self._client = httpx.AsyncClient()
+
+    async def transcribe_audio(self, audio_binary: bytes) -> str | None:
+        """Transcribe un audio en formato binario (ogg) a texto."""
         try:
-            files = {
-                'audio_file': ('audio.ogg', audio_binary, 'audio/ogg')
-            }
+            files = {"audio_file": ("audio.ogg", audio_binary, "audio/ogg")}
+            headers = {"accept": "application/json"}
 
-            headers = {'accept': 'application/json'}
-            
-            response = await self.client.post(
-                self.whisper_url,
+            response = await self._client.post(
+                self._whisper_url,
                 files=files,
                 headers=headers,
-                timeout=None
+                timeout=None,
             )
-            
             response.raise_for_status()
-            
-            transcription = response.json().get("text")
-            return transcription
-            
-        except httpx.HTTPStatusError as e:
-            print(f"Error de la API ({e.response.status_code}): {e.response.text}")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
+            return response.json().get("text")
+
+        except httpx.HTTPStatusError as error:
+            log_error(
+                "transcribiendo audio en Whisper",
+                error,
+                f"status={error.response.status_code} body={error.response.text[:1000]!r}",
+            )
+        except Exception as error:
+            log_error("transcribiendo audio en Whisper (inesperado)", error)
+        return None
