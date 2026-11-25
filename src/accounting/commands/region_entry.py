@@ -3,8 +3,10 @@ from abc import abstractmethod
 from typing import ClassVar
 
 from accounting.commands.base import Command, CommandContext
-from accounting.session_manager import UndoSnapshot
+from accounting.money import format_amount
+from accounting.undo import RegionEntryStep
 from config.log import log_error, log_warning
+from sheets.sheets_client import RegionFullError
 
 
 class RegionEntryCommand(Command):
@@ -31,14 +33,18 @@ class RegionEntryCommand(Command):
     def describe(self, args: list[str]) -> str:
         return " ".join([self.name, *args])
 
-    def execute(self, ctx: CommandContext, args: list[str]) -> str:
+    def record(self, ctx: CommandContext, args: list[str]) -> tuple[bool, str]:
+        """Escribe la fila y registra el paso de deshacer.
+
+        Devuelve (éxito, mensaje para el usuario).
+        """
         if error := self.require_active_sheet(ctx):
-            return error
+            return False, error
         if error := self.validate_args(args):
-            return error
+            return False, error
 
         try:
-            row = self.build_row(args)
+            row_values = self.build_row(args)
         except ValueError as error:
             log_error(
                 f"comando '{self.name}' con monto inválido",
@@ -47,44 +53,49 @@ class RegionEntryCommand(Command):
                 f"sheet_id={ctx.session.active_sheet_id} "
                 f"sheet_name={ctx.session.active_sheet_name!r} args={args}",
             )
-            return self.invalid_amount_message
+            return False, self.invalid_amount_message
 
         sheet_id = ctx.session.active_sheet_id
         region = getattr(ctx.sheets.layout, self.region_attr)
 
         try:
-            ok = ctx.sheets.append_to_region(sheet_id, region, row)
+            row = ctx.sheets.append_to_region(sheet_id, region, row_values)
+        except RegionFullError:
+            return False, self.region_full_message(region)
         except Exception as error:
             log_error(
                 f"comando '{self.name}' falló escribiendo en la planilla (excepción)",
                 error,
                 f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
                 f"sheet_id={sheet_id} sheet_name={ctx.session.active_sheet_name!r} "
-                f"region={region} counter_cell={region.counter_cell} row={row} args={args}",
+                f"region={region} row={row_values} args={args}",
             )
-            return "⚠️ No se pudo registrar el movimiento en la planilla."
+            return False, "⚠️ No se pudo registrar el movimiento en la planilla."
 
-        if not ok:
+        if row is None:
             # El detalle del porqué ya lo logueó SheetsClient; aquí se agrega
             # el contexto del comando para correlacionar con el mensaje del usuario.
             log_warning(
                 f"comando '{self.name}' no pudo registrar el movimiento",
                 f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
                 f"sheet_id={sheet_id} sheet_name={ctx.session.active_sheet_name!r} "
-                f"region={region} counter_cell={region.counter_cell} row={row} args={args} "
+                f"region={region} row={row_values} args={args} "
                 f"-> ver log previo de SheetsClient para la causa raíz",
             )
-            return "⚠️ No se pudo registrar el movimiento en la planilla."
+            return False, "⚠️ No se pudo registrar el movimiento en la planilla."
 
-        ctx.session.undo_snapshot = UndoSnapshot.single(
+        ctx.undo.record(
+            [RegionEntryStep(sheet_id=sheet_id, region=region, row=row, values=row_values)],
             description=self.describe(args),
-            sheet_id=sheet_id,
-            region=region,
         )
-        return self.success_message(args)
+        return True, self.success_message(args)
+
+    def execute(self, ctx: CommandContext, args: list[str]) -> str:
+        _ok, message = self.record(ctx, args)
+        return message
 
     def success_message(self, args: list[str]) -> str:
-        amount = self.parse_amount(args[0])
+        amount = format_amount(self.parse_amount(args[0]))
         description = " ".join(args[1:])
         if description:
             return f"{self.success_label}: {amount} - {description}"

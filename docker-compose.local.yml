@@ -1,0 +1,42 @@
+# Entorno local de pruebas: el bot REAL (DeepSeek + Google Drive/Sheets
+# reales) con una Evolution API simulada en lugar de WhatsApp.
+#
+#   docker compose -f docker-compose.local.yml up -d --build
+#   uv run python dev/send.py "pon la hoja de hoy"
+#   docker compose -f docker-compose.local.yml logs -f bot-contabilidad
+#
+# Usa los archivos locales de la raíz del proyecto: .env, client_secret.json,
+# token.json y bot_contabilidad.db (montados en las mismas rutas que en
+# producción, /app/secrets/...).
+services:
+  bot-contabilidad:
+    build: .
+    container_name: bot-contabilidad-local
+    env_file: .env
+    environment:
+      EVOLUTION_API_BASE_URL: http://evolution-mock:8080
+      EVOLUTION_API_INSTANCE_NAME: local
+      EVOLUTION_API_TOKEN: local
+      GOOGLE_OAUTH_REDIRECT_URI: http://localhost:8000/auth/callback
+      GOOGLE_CLIENT_SECRET_PATH: /app/secrets/client_secret.json
+      GOOGLE_TOKEN_PATH: /app/secrets/token.json
+      DATABASE_PATH: /app/secrets/data/bot_contabilidad.db
+      DATABASE_SCHEMA_PATH: /app/db.sql
+    volumes:
+      - ./client_secret.json:/app/secrets/client_secret.json:ro
+      - ./token.json:/app/secrets/token.json
+      - ./bot_contabilidad.db:/app/secrets/data/bot_contabilidad.db
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      - evolution-mock
+
+  evolution-mock:
+    build: .
+    container_name: evolution-mock-local
+    working_dir: /app/dev
+    command: ["uv", "run", "uvicorn", "evolution_mock:app", "--host", "0.0.0.0", "--port", "8080"]
+    volumes:
+      - ./dev:/app/dev:ro
+    ports:
+      - "127.0.0.1:8081:8080"

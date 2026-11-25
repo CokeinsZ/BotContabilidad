@@ -9,10 +9,12 @@ Optimización: la búsqueda de una planilla calcula directamente la carpeta del
 mes a partir del nombre-fecha (`dd-mm-yyyy` -> `mes-aaaa`), evitando el
 recorrido N+1 por todas las carpetas mensuales que hacía la versión anterior.
 """
-from datetime import datetime
+from datetime import date, datetime
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
+from google_api import execute
 
 from auth.google_auth_manager import GoogleAuthManager
 from config.log import log_error, log_warning
@@ -78,10 +80,9 @@ class DriveClient:
                 f"mimeType='{_SHEET_MIME}' and "
                 f"name='{sheet_name}' and '{month_folder_id}' in parents and trashed=false"
             )
-            response = (
+            response = execute(
                 self.service.files()
                 .list(q=query, fields="files(id,name)", pageSize=1)
-                .execute()
             )
             files = response.get("files", [])
             return files[0]["id"] if files else None
@@ -139,10 +140,9 @@ class DriveClient:
     ) -> tuple[str, str] | None:
         try:
             body = {"name": new_name, "parents": [parent_folder_id]}
-            copied_file = (
+            copied_file = execute(
                 self.service.files()
                 .copy(fileId=template_id, body=body)
-                .execute()
             )
             return copied_file.get("id"), copied_file.get("name")
         except HttpError as error:
@@ -189,15 +189,40 @@ class DriveClient:
 
     def list_files_in_folder(self, folder_id: str) -> list[tuple[str, str]]:
         """Lista (id, nombre) de todos los spreadsheets de una carpeta."""
+        return self._list_children(folder_id, _SHEET_MIME) or []
+
+    def list_planillas_from(self, folder_id: str, from_date: date) -> list[tuple[str, str]] | None:
+        """(id, nombre) de las planillas de las carpetas de mes desde `from_date`.
+
+        Recorre las carpetas `mes-aaaa` del business cuyo mes sea igual o
+        posterior al de `from_date`. Devuelve None si Drive falla (para no
+        tomar un listado incompleto como completo).
+        """
+        folders = self._list_children(folder_id, _FOLDER_MIME)
+        if folders is None:
+            return None
+        planillas: list[tuple[str, str]] = []
+        for month_folder_id, month_name in folders:
+            month = self._parse_month_folder(month_name)
+            if month is None or month < (from_date.year, from_date.month):
+                continue
+            files = self._list_children(month_folder_id, _SHEET_MIME)
+            if files is None:
+                return None
+            planillas.extend(files)
+        return planillas
+
+    def _list_children(self, folder_id: str, mime_type: str) -> list[tuple[str, str]] | None:
+        """(id, nombre) de los hijos de una carpeta con ese mimeType (None si falla)."""
         files: list[tuple[str, str]] = []
         try:
             page_token = None
             while True:
                 query = (
-                    f"mimeType='{_SHEET_MIME}' and "
+                    f"mimeType='{mime_type}' and "
                     f"'{folder_id}' in parents and trashed=false"
                 )
-                response = (
+                response = execute(
                     self.service.files()
                     .list(
                         q=query,
@@ -205,27 +230,27 @@ class DriveClient:
                         pageSize=100,
                         pageToken=page_token,
                     )
-                    .execute()
                 )
                 files.extend((f["id"], f["name"]) for f in response.get("files", []))
                 page_token = response.get("nextPageToken")
                 if not page_token:
                     break
             return files
-        except HttpError as error:
-            log_error(
-                "listando archivos de carpeta en Drive",
-                error,
-                f"folder_id={folder_id}",
-            )
-            return []
         except Exception as error:
             log_error(
-                "listando archivos de carpeta en Drive (inesperado)",
+                "listando carpeta en Drive",
                 error,
-                f"folder_id={folder_id}",
+                f"folder_id={folder_id} mime_type={mime_type}",
             )
-            return []
+            return None
+
+    @staticmethod
+    def _parse_month_folder(name: str) -> tuple[int, int] | None:
+        """'noviembre-2026' -> (2026, 11)."""
+        month_name, _, year = name.partition("-")
+        if month_name not in _MONTH_NAMES or not year.isdigit():
+            return None
+        return int(year), _MONTH_NAMES.index(month_name) + 1
 
     @staticmethod
     def _day_ordinal(name: str, date_str: str) -> int | None:
@@ -248,10 +273,9 @@ class DriveClient:
                 f"mimeType='{_FOLDER_MIME}' and "
                 f"name='{folder_name}' and '{parent_id}' in parents and trashed=false"
             )
-            response = (
+            response = execute(
                 self.service.files()
                 .list(q=query, fields="files(id,name)", pageSize=1)
-                .execute()
             )
             files = response.get("files", [])
             return files[0]["id"] if files else None
@@ -277,10 +301,9 @@ class DriveClient:
                 "mimeType": _FOLDER_MIME,
                 "parents": [parent_id],
             }
-            folder = (
+            folder = execute(
                 self.service.files()
                 .create(body=metadata, fields="id")
-                .execute()
             )
             return folder.get("id")
         except HttpError as error:

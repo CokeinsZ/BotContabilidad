@@ -35,6 +35,7 @@ class CommandDispatcher:
             return [f"⚠️ Comando desconocido: {parts[0].lower()}"]
 
         print(f"Ejecutando comando: {command.name} con argumentos: {args}")
+        ctx.undo.begin_command()
         try:
             return self._normalize(command.execute(ctx, args))
         except Exception as error:

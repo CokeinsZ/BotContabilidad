@@ -4,7 +4,7 @@ Convención de nombres:
 - Primera planilla del día:  `dd-mm-yyyy`        (ordinal 1)
 - Planillas adicionales:     `dd-mm-yyyy-N`      (ordinal N >= 2)
 """
-from datetime import datetime
+from datetime import date, datetime
 
 #: Palabras ordinales en español para los comandos "segunda planilla", etc.
 ORDINAL_WORDS = {
@@ -47,3 +47,22 @@ def base_date_of(sheet_name: str) -> str | None:
 def sheet_name_for(date_str: str, ordinal: int) -> str:
     """Nombre de archivo para la planilla N-ésima de un día."""
     return date_str if ordinal == 1 else f"{date_str}-{ordinal}"
+
+
+def parse_sheet_name(name: str) -> tuple[date, int] | None:
+    """Fecha y ordinal de una planilla, para ordenarlas cronológicamente.
+
+    "25-08-2026" -> (date(2026, 8, 25), 1); "25-08-2026-3" -> (date(2026, 8, 25), 3).
+    None si el nombre no es de una planilla diaria.
+    """
+    base = base_date_of(name)
+    if base is None:
+        return None
+    rest = name[len(base):]
+    if rest == "":
+        ordinal = 1
+    elif rest.startswith("-") and rest[1:].isdigit() and int(rest[1:]) >= 2:
+        ordinal = int(rest[1:])
+    else:
+        return None
+    return datetime.strptime(base, "%d-%m-%Y").date(), ordinal

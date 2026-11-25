@@ -20,6 +20,7 @@ from accounting.commands.employee_commands import (
     NominaCommand,
     WorkerLoanCommand,
 )
+from accounting.commands.balance_commands import CorrectBalancesCommand
 from accounting.commands.summary_command import SummaryCommand
 from accounting.commands.undo_command import UndoCommand
 from accounting.commands.help_command import HelpCommand
@@ -42,6 +43,7 @@ def build_default_commands() -> list[Command]:
         CashCommand(),
         InvestmentCommand(),
         SummaryCommand(),
+        CorrectBalancesCommand(),
         UndoCommand(),
         HelpCommand(),
     ]

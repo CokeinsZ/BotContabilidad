@@ -23,6 +23,12 @@ def _env(key: str, default: str) -> str:
     return value if value else default
 
 
+def _env_list(key: str) -> tuple[str, ...]:
+    """Lee una lista separada por comas (vacía si no está definida)."""
+    raw = os.getenv(key, "")
+    return tuple(item.strip().lower() for item in raw.split(",") if item.strip())
+
+
 @dataclass(frozen=True)
 class Settings:
     """Configuración global de la aplicación (inmutable)."""
@@ -38,7 +44,6 @@ class Settings:
     deepseek_api_key: str
 
     # --- Google Drive (valores universales a todos los businesses) ---
-    master_folder_id: str
     planilla_template_id: str
     workers_template_id: str
 
@@ -46,10 +51,21 @@ class Settings:
     google_client_secret_path: Path
     google_token_path: Path
     google_oauth_redirect_uri: str
+    # Cuentas de Google con las que se permite autenticar el servidor.
+    # Vacío = cualquier cuenta (no recomendado en producción).
+    google_allowed_emails: tuple[str, ...]
+
+    # --- Protección de los endpoints /auth (HTTP Basic) ---
+    # Sin contraseña configurada, /auth/login queda deshabilitado.
+    auth_admin_user: str
+    auth_admin_password: str
 
     # --- Base de datos ---
     database_path: Path
     database_schema_path: Path
+
+    # --- Zona horaria del negocio ("hoy", fechas de nómina, etc.) ---
+    timezone: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -60,7 +76,6 @@ class Settings:
             whisper_url=_env("WHISPER_URL", ""),
             deepseek_api_url=_env("DEEPSEEK_API_URL", "https://api.deepseek.com"),
             deepseek_api_key=_env("DEEPSEEK_API_KEY", ""),
-            master_folder_id=_env("MASTER_FOLDER_ID", ""),
             planilla_template_id=_env("PLANILLA_TEMPLATE_ID", ""),
             workers_template_id=_env("WORKERS_TEMPLATE_ID", ""),
             google_client_secret_path=Path(
@@ -73,12 +88,16 @@ class Settings:
                 "GOOGLE_OAUTH_REDIRECT_URI",
                 "https://contabilidad.notiasis.com/auth/callback",
             ),
+            google_allowed_emails=_env_list("GOOGLE_ALLOWED_EMAILS"),
+            auth_admin_user=_env("AUTH_ADMIN_USER", "admin"),
+            auth_admin_password=_env("AUTH_ADMIN_PASSWORD", ""),
             database_path=Path(
                 _env("DATABASE_PATH", str(PROJECT_ROOT / "data" / "bot_contabilidad.db"))
             ),
             database_schema_path=Path(
                 _env("DATABASE_SCHEMA_PATH", str(PROJECT_ROOT / "db.sql"))
             ),
+            timezone=_env("TIMEZONE", "America/Bogota"),
         )
 
 

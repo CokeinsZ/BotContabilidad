@@ -6,6 +6,7 @@ bloquea por autenticación: si no hay credenciales de Google, el servidor
 arranca igualmente y basta con abrir `/auth/login` desde cualquier
 dispositivo para autenticarlo.
 """
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -37,6 +38,7 @@ class Container:
             client_secret_path=settings.google_client_secret_path,
             token_path=settings.google_token_path,
             redirect_uri=settings.google_oauth_redirect_uri,
+            allowed_emails=settings.google_allowed_emails,
         )
         self.database = Database(
             db_path=settings.database_path,
@@ -83,6 +85,11 @@ def create_server() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        if not container.settings.auth_admin_password:
+            print(
+                "⚠️ AUTH_ADMIN_PASSWORD no está configurado: /auth/login queda "
+                "deshabilitado hasta que se configure."
+            )
         if container.auth_manager.is_authenticated():
             print("✅ Credenciales de Google cargadas correctamente.")
         else:
@@ -92,6 +99,11 @@ def create_server() -> FastAPI:
                 "el servidor."
             )
         yield
+        # Apagado: dar unos segundos a los mensajes que se están procesando.
+        try:
+            await asyncio.wait_for(container.whatsapp_service.wait_idle(), timeout=8)
+        except TimeoutError:
+            print("⚠️ Apagando con mensajes de WhatsApp aún en proceso.")
 
     app = FastAPI(
         title="Bot de Contabilidad",
@@ -113,7 +125,13 @@ def create_server() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(create_auth_router(container.auth_manager))
+    app.include_router(
+        create_auth_router(
+            container.auth_manager,
+            admin_user=container.settings.auth_admin_user,
+            admin_password=container.settings.auth_admin_password,
+        )
+    )
     app.include_router(create_whatsapp_router(container.whatsapp_service))
 
     return app
