@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import { TextInput, View } from 'react-native';
+import { Platform, TextInput, View } from 'react-native';
 
 import type { TextInputRef } from '@/components/ui/inputs';
 import { colors } from '@/theme';
@@ -7,6 +7,9 @@ import { colors } from '@/theme';
 import { BotonEnviar } from './BotonEnviar';
 import { styles } from './Composer.styles';
 import { PrefijoComando } from './PrefijoComando';
+
+/** En la web el campo es de una línea: un textarea no crece solo y queda muy alto. */
+const WEB = Platform.OS === 'web';
 
 interface ComposerProps {
   inputRef: RefObject<TextInputRef | null>;
@@ -38,7 +41,11 @@ export function Composer({ inputRef, etiqueta, texto, placeholder, puedeEnviar, 
           selectionColor={colors.action.primary}
           cursorColor={colors.action.primary}
           accessibilityLabel={etiqueta ? `Mensaje de ${etiqueta}` : 'Mensaje'}
-          multiline
+          multiline={!WEB}
+          // Web: la tecla Enter del teclado envía y el teclado sigue abierto.
+          enterKeyHint={WEB ? 'send' : undefined}
+          blurOnSubmit={WEB ? false : undefined}
+          onSubmitEditing={WEB && puedeEnviar ? onEnviar : undefined}
           autoCorrect={false}
           autoCapitalize="none"
         />

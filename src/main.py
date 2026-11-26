@@ -152,12 +152,7 @@ def create_server() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost",
-            "http://localhost:8080",
-            "http://localhost:8000",
-            "https://contabilidad.notiasis.com",
-        ],
+        allow_origins=container.settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],

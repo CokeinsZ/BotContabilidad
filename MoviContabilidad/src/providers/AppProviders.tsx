@@ -11,10 +11,12 @@ import { SessionProvider } from '@/session';
 
 import { QueryProvider } from './QueryProvider';
 import { SplashGate } from './SplashGate';
+import { VisualViewportRoot } from './VisualViewportRoot';
 
 export function AppProviders({ children }: PropsWithChildren) {
   return (
     <SafeAreaProvider>
+      <VisualViewportRoot />
       <StatusBar style="dark" />
       <QueryProvider>
         <AlertProvider>

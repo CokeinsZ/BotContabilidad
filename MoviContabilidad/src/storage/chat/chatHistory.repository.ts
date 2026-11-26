@@ -7,15 +7,9 @@
 import type { EstadoEnvio, Mensaje, RespuestaBot } from '@/api';
 
 import { getDatabase } from '../database';
-import { filaAMensaje, type FilaMensaje } from './chatHistory.types';
+import { filaAMensaje, type FilaMensaje, type MensajePropio } from './chatHistory.types';
 
-export interface MensajePropio {
-  administradorId: number;
-  planillaId: string;
-  clientId: string;
-  comando: string | null;
-  texto: string;
-}
+export type { MensajePropio } from './chatHistory.types';
 
 /** Guarda lo que el administrador envía, en estado "enviando". */
 export async function guardarMensajePropio(mensaje: MensajePropio, ahora: number = Date.now()): Promise<void> {

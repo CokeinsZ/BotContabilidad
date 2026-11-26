@@ -22,7 +22,7 @@ export function AccionesPrincipales(props: AccionesPrincipalesProps) {
       </View>
       <View style={styles.tileRow}>
         <ActionTile icon="carpeta" title="Ver planillas" subtitle="Por mes, como en Drive" onPress={props.onPlanillas} />
-        <ActionTile icon="trabajadores" title="Trabajadores" subtitle="Préstamos y nóminas" onPress={props.onTrabajadores} />
+        <ActionTile icon="trabajadores" title="Trabajadores" subtitle="Vales y nóminas" onPress={props.onTrabajadores} />
       </View>
       <ActionTile icon="perfil" title="Mi perfil" subtitle="Negocio y administrador" wide onPress={props.onPerfil} />
     </View>

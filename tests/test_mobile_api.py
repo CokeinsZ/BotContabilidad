@@ -214,9 +214,9 @@ def test_profile_and_renames(env):
 def test_commands_catalog_includes_aliases(env):
     commands = env.client.get("/app/comandos", headers=env.headers()).json()
     assert [c["id"] for c in commands][:4] == ["gasto", "efectivo", "saldo", "trabajador"]
-    prestamo = next(c for c in commands if c["id"] == "trabajador")
-    assert prestamo["etiqueta"] == "Préstamo" and prestamo["sugiere_trabajador"] is True
-    assert "t" in prestamo["alias"]
+    vale = next(c for c in commands if c["id"] == "trabajador")
+    assert vale["etiqueta"] == "Vale" and vale["sugiere_trabajador"] is True
+    assert {"t", "vale", "vales", "v"} <= set(vale["alias"])
     assert next(c for c in commands if c["id"] == "deshacer")["confirmar"] is True
 
 

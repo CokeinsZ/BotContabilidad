@@ -19,7 +19,7 @@ export function useComposer(comandos: Comando[], inicial: { comandoId: string; t
     setTimeout(() => inputRef.current?.focus(), 60);
   }, []);
 
-  // Si se llegó con un comando (p. ej. "Registrar préstamo" desde un trabajador), el teclado se abre solo.
+  // Si se llegó con un comando (p. ej. "Registrar vale" desde un trabajador), el teclado se abre solo.
   useEffect(() => {
     if (abrirAlInicio.current) {
       abrirAlInicio.current = false;

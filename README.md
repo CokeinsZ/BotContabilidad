@@ -230,6 +230,11 @@ En el `.env` (y en el servidor):
 - `BOT_WHATSAPP_NUMBER`: número de WhatsApp del bot con indicativo
   (ej. `573001234567`). La app lo usa para abrir el chat con el código.
 - `APP_ACCESS_TOKEN_MINUTES` (60) y `APP_REFRESH_TOKEN_DAYS` (90).
+- `APP_WEB_ORIGINS`: dominio(s) donde está publicada la versión web de la app,
+  separados por comas (ej. `https://movil.notiasis.com`). Sin esto, el
+  navegador bloquea las llamadas de la web al bot (CORS).
+- `APP_WEB_API_URL`: URL del bot que usa la versión web (servicio
+  `movicontabilidad-web`); por defecto `https://contabilidad.notiasis.com`.
 
 `/app/*` debe quedar expuesto por HTTPS en el proxy (como `/auth/*`).
 
@@ -393,7 +398,27 @@ Las rutas dentro del contenedor (`/app/secrets/...`) se configuran en el
 el compose solo las reenvía, sin valores hardcodeados. Variables nuevas que
 también reenvía: `AUTH_ADMIN_USER`, `AUTH_ADMIN_PASSWORD`,
 `GOOGLE_ALLOWED_EMAILS`, `TIMEZONE`, `APP_JWT_SECRET`,
-`APP_ACCESS_TOKEN_MINUTES`, `APP_REFRESH_TOKEN_DAYS` y `BOT_WHATSAPP_NUMBER`.
+`APP_ACCESS_TOKEN_MINUTES`, `APP_REFRESH_TOKEN_DAYS`, `BOT_WHATSAPP_NUMBER` y `APP_WEB_ORIGINS`
+(y `APP_WEB_API_URL` como argumento de build de la web).
+
+### Versión web de la app (`movicontabilidad-web`)
+
+El mismo `docker compose up -d --build` construye y levanta la versión web de
+la app (la que usan los iPhone). La imagen
+([MoviContabilidad/Dockerfile](MoviContabilidad/Dockerfile)) exporta la app
+con Expo y la sirve con nginx en el puerto 80 del contenedor, dentro de la red
+`pan-de-oro`. Para publicarla:
+
+1. En el proxy de `pan-de-oro`, apunta un dominio (ej. `movil.notiasis.com`)
+   a `movicontabilidad-web:80`, con HTTPS (el teléfono lo exige para la app).
+2. En el `.env`, agrega ese dominio a `APP_WEB_ORIGINS` y reinicia el bot.
+
+La URL del bot queda fija en la imagen (`APP_WEB_API_URL`): si cambia, hay
+que reconstruir (`docker compose build movicontabilidad-web`). Para
+actualizar la web basta con `docker compose up -d --build movicontabilidad-web`.
+
+En local, `docker compose -f docker-compose.local.yml up -d --build` la sirve
+en http://localhost:8083 contra el bot local.
 
 > Nota: no existe servicio de base de datos en el compose porque SQLite es
 > una base de datos embebida (un archivo), no un servidor: con el volumen

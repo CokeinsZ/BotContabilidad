@@ -1,0 +1,12 @@
+# El bot solo copia pyproject.toml, uv.lock, README.md, db.sql y src/ (ver Dockerfile).
+# Lo demás no tiene que viajar al contexto de build: la app trae node_modules, y
+# los secretos y la base local no deben entrar nunca en una imagen.
+.git
+.venv
+**/__pycache__
+MoviContabilidad
+data
+*.db
+.env
+token.json
+client_secret.json

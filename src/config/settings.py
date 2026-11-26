@@ -23,6 +23,21 @@ def _env(key: str, default: str) -> str:
     return value if value else default
 
 
+#: Orígenes que siempre pueden llamar al bot desde un navegador.
+BASE_CORS_ORIGINS = (
+    "http://localhost",
+    "http://localhost:8080",
+    "http://localhost:8000",
+    "https://contabilidad.notiasis.com",
+)
+
+
+def _env_origins(key: str) -> tuple[str, ...]:
+    """Orígenes web separados por comas, sin "/" final (así los manda el navegador)."""
+    raw = os.getenv(key, "")
+    return tuple(item.strip().rstrip("/") for item in raw.split(",") if item.strip())
+
+
 def _env_list(key: str) -> tuple[str, ...]:
     """Lee una lista separada por comas (vacía si no está definida)."""
     raw = os.getenv(key, "")
@@ -77,6 +92,13 @@ class Settings:
     bot_whatsapp_number: str
     # Códigos de vinculación que puede pedir una misma IP cada 10 minutos.
     app_pairings_per_ip: int
+    # Dónde está publicada la versión web de la app (CORS), además de los fijos.
+    app_web_origins: tuple[str, ...] = ()
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Los orígenes fijos más APP_WEB_ORIGINS (donde esté publicada la versión web de la app)."""
+        return list(dict.fromkeys((*BASE_CORS_ORIGINS, *self.app_web_origins)))
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -114,6 +136,7 @@ class Settings:
             app_refresh_token_days=int(_env("APP_REFRESH_TOKEN_DAYS", "90")),
             bot_whatsapp_number="".join(filter(str.isdigit, _env("BOT_WHATSAPP_NUMBER", ""))),
             app_pairings_per_ip=int(_env("APP_PAIRINGS_PER_IP", "10")),
+            app_web_origins=_env_origins("APP_WEB_ORIGINS"),
         )
 
 

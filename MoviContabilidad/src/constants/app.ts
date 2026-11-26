@@ -16,6 +16,6 @@ export const APP = {
   minSheetOptions: 3,
   /** Retraso del toque simple cuando la fila también acepta doble toque. */
   doubleTapDelayMs: 260,
-  /** Sugerencias de trabajadores que se muestran al escribir un préstamo o una nómina. */
+  /** Sugerencias de trabajadores que se muestran al escribir un vale o una nómina. */
   maxWorkerSuggestions: 5,
 } as const;

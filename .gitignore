@@ -215,6 +215,6 @@ __marimo__/
 token.json
 client_secret.json
 
-# Base de datos SQLite local
-data/
+# Base de datos SQLite local (solo la carpeta de la raíz: src/hooks/data/ de la app sí va)
+/data/
 *.db

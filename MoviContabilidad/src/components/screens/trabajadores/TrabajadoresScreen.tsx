@@ -45,7 +45,7 @@ export default function TrabajadoresScreen() {
             <EmptyState
               icon="trabajadores"
               title="Todavía no hay trabajadores"
-              message="El archivo de cada trabajador se crea solo al registrar su primer préstamo."
+              message="El archivo de cada trabajador se crea solo al registrar su primer vale."
             />
           ) : (
             <EmptyState icon="buscar" title="Sin resultados" message={`Nadie coincide con «${s.busqueda}».`} compact />

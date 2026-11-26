@@ -142,3 +142,18 @@ def test_ttl_cache_expires_and_does_not_store_none():
     assert len(calls) == 2
     assert cache.get_or_load("nada", lambda: None) is None
     assert cache.get("nada") is None
+
+
+# ----------------------------------------------------------------------
+# CORS para la versión web de la app
+# ----------------------------------------------------------------------
+def test_app_web_origins_are_added_to_cors(monkeypatch):
+    from config.settings import BASE_CORS_ORIGINS, Settings
+
+    monkeypatch.setenv("APP_WEB_ORIGINS", " https://movicontabilidad.expo.app/ , http://localhost:8081,")
+    settings = Settings.from_env()
+    assert settings.app_web_origins == ("https://movicontabilidad.expo.app", "http://localhost:8081")
+    assert settings.cors_origins == [*BASE_CORS_ORIGINS, "https://movicontabilidad.expo.app", "http://localhost:8081"]
+
+    monkeypatch.setenv("APP_WEB_ORIGINS", "https://contabilidad.notiasis.com")
+    assert Settings.from_env().cors_origins == list(BASE_CORS_ORIGINS)   # sin repetidos

@@ -109,7 +109,7 @@ def _first_cell(values: dict, cell: str):
 # Préstamos
 # ----------------------------------------------------------------------
 class WorkerLoanCommand(Command):
-    """`trabajador <monto> <nombre>`: registra un PRÉSTAMO a un trabajador.
+    """`trabajador <monto> <nombre>` (o `vale`): registra un PRÉSTAMO (vale) a un trabajador.
 
     El préstamo se registra primero en la planilla diaria (región de
     trabajadores). Solo si eso funciona se registra ADEMÁS en el archivo
@@ -122,7 +122,7 @@ class WorkerLoanCommand(Command):
     """
 
     name = "trabajador"
-    aliases = ("trabajadores", "t")
+    aliases = ("trabajadores", "t", "vale", "vales", "v")
 
     def execute(self, ctx: CommandContext, args: list[str]) -> CommandResult:
         if error := self.require_active_sheet(ctx):

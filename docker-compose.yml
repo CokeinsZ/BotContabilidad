@@ -30,6 +30,22 @@ services:
       - APP_REFRESH_TOKEN_DAYS=${APP_REFRESH_TOKEN_DAYS}
       - BOT_WHATSAPP_NUMBER=${BOT_WHATSAPP_NUMBER}
       - APP_PAIRINGS_PER_IP=${APP_PAIRINGS_PER_IP}
+      - APP_WEB_ORIGINS=${APP_WEB_ORIGINS}
+    networks:
+      - pan-de-oro
+
+  # Versión web de la app (la usan los iPhone). El proxy de pan-de-oro publica su
+  # dominio apuntando a movicontabilidad-web:80, y ese dominio va en APP_WEB_ORIGINS
+  # del bot (CORS). La URL del bot queda fija al construir: si cambia, reconstruir.
+  movicontabilidad-web:
+    build:
+      context: ./MoviContabilidad
+      args:
+        EXPO_PUBLIC_API_URL: ${APP_WEB_API_URL:-https://contabilidad.notiasis.com}
+    container_name: movicontabilidad-web
+    restart: unless-stopped
+    ports:
+      - 80
     networks:
       - pan-de-oro
 

@@ -24,6 +24,10 @@ services:
       DATABASE_SCHEMA_PATH: /app/db.sql
       # Las pruebas E2E vinculan la app muchas veces seguidas desde la misma IP.
       APP_PAIRINGS_PER_IP: "1000"
+      # Versión web de la app en local (el 8081 es de evolution-mock): servidor de
+      # desarrollo en el 8082 (npx expo start --web --port 8082) y el servicio
+      # movicontabilidad-web en el 8083.
+      APP_WEB_ORIGINS: "http://localhost:8082,http://localhost:8083"
     volumes:
       - ./client_secret.json:/app/secrets/client_secret.json:ro
       - ./token.json:/app/secrets/token.json
@@ -32,6 +36,18 @@ services:
       - "127.0.0.1:8000:8000"
     depends_on:
       - evolution-mock
+
+  # Versión web de la app, como en producción: http://localhost:8083
+  movicontabilidad-web:
+    build:
+      context: ./MoviContabilidad
+      args:
+        EXPO_PUBLIC_API_URL: http://localhost:8000
+    container_name: movicontabilidad-web-local
+    ports:
+      - "127.0.0.1:8083:80"
+    depends_on:
+      - bot-contabilidad
 
   evolution-mock:
     build: .

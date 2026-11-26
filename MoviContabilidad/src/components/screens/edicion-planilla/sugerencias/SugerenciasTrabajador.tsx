@@ -4,7 +4,7 @@ import type { Trabajador } from '@/api/entities';
 import { Chip } from '@/components/ui/badges';
 import { spacing } from '@/theme';
 
-/** Nombres que coinciden con lo escrito (Préstamo / Nómina): evitan el menú de "varios parecidos". */
+/** Nombres que coinciden con lo escrito (Vale / Nómina): evitan el menú de "varios parecidos". */
 export function SugerenciasTrabajador({ trabajadores, onElegir }: { trabajadores: Trabajador[]; onElegir: (nombre: string) => void }) {
   if (trabajadores.length === 0) return null;
   return (

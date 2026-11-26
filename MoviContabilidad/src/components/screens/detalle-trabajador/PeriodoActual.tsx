@@ -14,7 +14,7 @@ export function PeriodoActual({ total, usados, capacidad }: PeriodoActualProps) 
   return (
     <Card>
       <Text variant="overline">Período actual</Text>
-      <Text variant="caption">Total de préstamos</Text>
+      <Text variant="caption">Total de vales</Text>
       <MoneyText value={total} variant="amountLarge" />
       <Text variant="captionStrong">{`${usados} de ${capacidad} vales usados`}</Text>
       <ProgressBar value={usados} max={capacidad} accessibilityLabel="Vales usados" />

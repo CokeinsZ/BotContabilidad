@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Versión web de MoviContabilidad, pensada para el navegador del teléfono.
+      Expo usa este archivo en lugar de su plantilla (web.output "single"): pone el
+      idioma y el título de app.json, y agrega los scripts, theme-color y description.
+      - viewport-fit=cover: zonas seguras del iPhone (notch, barra de inicio).
+      - maximum-scale=1: Safari no hace zoom al enfocar un campo ni con el doble toque.
+    -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <title>%WEB_TITLE%</title>
+    <!-- "Agregar a pantalla de inicio": se abre como una app, con su ícono. -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="MoviConta" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- Reinicio de estilos recomendado por react-native-web, más lo del teléfono. -->
+    <style id="expo-reset">
+      html,
+      body {
+        height: 100%;
+        background-color: #ffffff;
+        overscroll-behavior: none;
+      }
+      body {
+        overflow: hidden;
+        -webkit-text-size-adjust: 100%;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        touch-action: manipulation;
+      }
+      /* Los campos marcan el foco con su propio borde: sin el contorno del navegador. */
+      input:focus,
+      textarea:focus {
+        outline: none;
+      }
+      /*
+        La raíz queda fija: VisualViewportRoot (src/providers) le da el alto de la
+        parte visible y la mueve con el desplazamiento cuando aparece el teclado.
+      */
+      #root {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+  </head>
+
+  <body>
+    <noscript>Activa JavaScript para usar MoviContabilidad.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

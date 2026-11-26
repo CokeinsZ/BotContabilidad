@@ -354,7 +354,7 @@ def test_perfil_renombrar_y_comandos(run: Run, negocio: Negocio, app: AppClient)
 
     commands = app.ok("GET", "/comandos")
     assert [c["id"] for c in commands][:4] == ["gasto", "efectivo", "saldo", "trabajador"]
-    assert next(c for c in commands if c["id"] == "trabajador")["etiqueta"] == "Préstamo"
+    assert next(c for c in commands if c["id"] == "trabajador")["etiqueta"] == "Vale"
 
 
 # ----------------------------------------------------------------------

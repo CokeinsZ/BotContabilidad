@@ -1,0 +1,11 @@
+# Se instalan y se generan dentro de la imagen.
+node_modules
+dist
+.expo
+web-build
+android
+ios
+# La URL del bot entra como argumento de build, no por .env.
+.env
+.env*.local
+*.log

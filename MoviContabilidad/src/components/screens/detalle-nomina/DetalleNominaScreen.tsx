@@ -24,7 +24,7 @@ export default function DetalleNominaScreen() {
       <Stack.Screen options={{ title: `Nómina · ${fecha}` }} />
       <Card>
         <Text variant="overline">{detalle.trabajador.nombre}</Text>
-        <Text variant="caption">Total de préstamos del período</Text>
+        <Text variant="caption">Total de vales del período</Text>
         <MoneyText value={detalle.totalPrestamos} variant="amountLarge" />
       </Card>
       <Section overline="Vales del período">

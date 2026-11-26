@@ -1,6 +1,15 @@
 import type { EstadoEnvio, Mensaje, TipoMensaje } from '@/api';
 
-/** Fila de la tabla `mensajes` tal como la devuelve SQLite. */
+/** Lo que el administrador envía (se guarda en estado "enviando"). */
+export interface MensajePropio {
+  administradorId: number;
+  planillaId: string;
+  clientId: string;
+  comando: string | null;
+  texto: string;
+}
+
+/** Fila de la tabla `mensajes` tal como la devuelve SQLite (en la web, igual en JSON). */
 export interface FilaMensaje {
   id: number;
   administrador_id: number;

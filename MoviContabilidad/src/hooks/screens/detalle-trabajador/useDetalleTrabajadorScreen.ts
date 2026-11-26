@@ -15,7 +15,7 @@ export function useDetalleTrabajadorScreen() {
   const trabajador = useTrabajador(trabajadorId);
   const hoy = usePlanillasDeHoy();
 
-  /** Préstamo y nómina se registran en una planilla: la última de hoy, con el comando ya elegido. */
+  /** Vale y nómina se registran en una planilla: la última de hoy, con el comando ya elegido. */
   const irAlChatDeHoy = async (comando: 'trabajador' | 'nomina') => {
     const nombre = trabajador.data?.nombre;
     const ultima = hoy.data?.ultima;
@@ -26,7 +26,7 @@ export function useDetalleTrabajadorScreen() {
     }
     const crear = await alert.confirmar({
       titulo: 'Primero la planilla de hoy',
-      mensaje: 'Los préstamos y la nómina se registran en la planilla del día. Créala y vuelve a intentarlo.',
+      mensaje: 'Los vales y la nómina se registran en la planilla del día. Créala y vuelve a intentarlo.',
       textoConfirmar: 'Crear planilla',
     });
     if (crear) router.push(routes.nuevaPlanilla({ fecha: hoy.data?.fecha }));

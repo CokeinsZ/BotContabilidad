@@ -7,9 +7,9 @@ import { Text } from '@/components/ui/typography';
 export function ListaVales({ vales }: { vales: Vale[] }) {
   const ordenados = [...vales].reverse();
   return (
-    <Section overline="Vales" title={vales.length ? `${vales.length} préstamo${vales.length === 1 ? '' : 's'}` : undefined}>
+    <Section overline="Vales" title={vales.length ? `${vales.length} vale${vales.length === 1 ? '' : 's'}` : undefined}>
       {ordenados.length === 0 ? (
-        <Text tone="secondary">No tiene préstamos en este período.</Text>
+        <Text tone="secondary">No tiene vales en este período.</Text>
       ) : (
         ordenados.map((vale) => <ValeRow key={vale.fila} vale={vale} />)
       )}

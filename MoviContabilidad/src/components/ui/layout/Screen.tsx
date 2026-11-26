@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { RefreshControl, ScrollView, View, type StyleProp, type ViewStyle } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '@/theme';
@@ -24,6 +24,23 @@ export interface ScreenProps {
   contentStyle?: StyleProp<ViewStyle>;
 }
 
+/**
+ * El padding vertical de `contentStyle` va debajo de la zona segura, no en su
+ * lugar: si lo reemplazara, el contenido quedaría bajo la barra de estado.
+ */
+function paddingConZonaSegura(
+  contentStyle: StyleProp<ViewStyle>,
+  zona: { top: number; bottom: number },
+  base: { top: number; bottom: number },
+): ViewStyle {
+  const propio = StyleSheet.flatten(contentStyle) ?? {};
+  const numero = (...valores: unknown[]) => valores.find((v): v is number => typeof v === 'number');
+  return {
+    paddingTop: zona.top + (numero(propio.paddingTop, propio.paddingVertical, propio.padding) ?? base.top),
+    paddingBottom: zona.bottom + (numero(propio.paddingBottom, propio.paddingVertical, propio.padding) ?? base.bottom),
+  };
+}
+
 /** Toda pantalla empieza con Screen: fondo, áreas seguras, margen y scroll/refresh opcionales. */
 export function Screen({
   children,
@@ -46,8 +63,12 @@ export function Screen({
       contentContainerStyle={[
         styles.scrollContent,
         padded && styles.padded,
-        { paddingTop: top + (padded ? spacing.lg : 0), paddingBottom: footer ? spacing.lg : bottom + spacing.xl },
         contentStyle,
+        paddingConZonaSegura(
+          contentStyle,
+          { top, bottom: footer ? 0 : bottom },
+          { top: padded ? spacing.lg : 0, bottom: footer ? spacing.lg : spacing.xl },
+        ),
       ]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
@@ -65,7 +86,14 @@ export function Screen({
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.fill, padded && styles.padded, { paddingTop: top, paddingBottom: footer ? 0 : bottom }, contentStyle]}>
+    <View
+      style={[
+        styles.fill,
+        padded && styles.padded,
+        contentStyle,
+        paddingConZonaSegura(contentStyle, { top, bottom: footer ? 0 : bottom }, { top: 0, bottom: 0 }),
+      ]}
+    >
       {children}
     </View>
   );

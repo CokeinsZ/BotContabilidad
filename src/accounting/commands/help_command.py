@@ -24,7 +24,7 @@ class HelpCommand(Command):
             "   • gasto <monto> <descripción> — compras a proveedores",
             "   • limpieza <monto> — productos de aseo",
             "   • alimentacion <monto> — comida del personal",
-            "   • trabajador <monto> <nombre> — préstamo a un trabajador",
+            "   • vale <monto> <nombre> (o trabajador) — vale (préstamo) a un trabajador",
             "   • nomina <monto> <nombre> — pago de nómina (cierra los préstamos del trabajador)",
             "   • administrador <monto> — vale del administrador",
             "   • retiro <monto> <descripción> — sacar dinero de la caja",

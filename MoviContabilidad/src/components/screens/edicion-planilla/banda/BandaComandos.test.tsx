@@ -12,7 +12,7 @@ test('la banda muestra "Libre" y los comandos; elegir uno avisa cuál', async ()
   expect(screen.getByRole('button', { name: 'Gasto' })).toBeSelected();
   expect(screen.getByRole('button', { name: 'Deshacer' })).toBeDisabled();
 
-  await fireEvent.press(screen.getByRole('button', { name: 'Préstamo' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Vale' }));
   expect(onElegir).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'trabajador' }));
   await fireEvent.press(screen.getByRole('button', { name: 'Libre' }));
   expect(onElegir).toHaveBeenLastCalledWith('libre');

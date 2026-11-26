@@ -1,6 +1,8 @@
 """Pruebas del núcleo de comandos con Google Sheets/Drive falsos en memoria."""
 import threading
 
+import pytest
+
 from fakes import col_values
 
 COUNTERS = {"gastos": "C135", "trabajadores": "C136", "retiros": "C138", "aseo": "C140"}
@@ -193,6 +195,14 @@ def test_loan_matches_existing_file_ignoring_case_and_accents(bot):
     assert col_values(bot.service, file_id, "principal!B13") == [[10000]]
 
 
+@pytest.mark.parametrize("alias", ["vale", "vales", "v", "Vale", "t", "trabajadores"])
+def test_vale_and_other_aliases_register_a_loan(bot, alias):
+    bot.send("hoja 24-11-2026")
+    responses = bot.send(f"{alias} 15000 pedro")
+    assert responses[0] == "Préstamo registrado: $15.000 - pedro"
+    assert responses[-1] == "📄 Préstamo guardado en el archivo de 'pedro'."
+
+
 def test_loan_not_written_to_worker_file_when_daily_sheet_fails(bot):
     """Bug 2: antes se escribía en el archivo y el paso se colaba en el deshacer anterior."""
     bot.send("hoja 24-11-2026", "gasto 7000 harina")
@@ -312,7 +322,7 @@ def test_unregistered_phone_gets_its_identifier(bot):
 
 def test_help_lists_all_movement_commands(bot):
     help_text = bot.send("instrucciones")[0]
-    for command in ("gasto", "limpieza", "alimentacion", "trabajador", "nomina",
+    for command in ("gasto", "limpieza", "alimentacion", "vale", "trabajador", "nomina",
                     "administrador", "retiro", "inversion", "saldo", "efectivo",
                     "terminar_dia", "deshacer"):
         assert command in help_text

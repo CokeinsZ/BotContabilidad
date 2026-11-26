@@ -6,30 +6,47 @@
 > Este documento no depende de ninguna conversación. Dice qué se decidió, por qué, y cómo implementarlo en el
 > backend (bot de Python, `src/`) y en la app (Expo, `MoviContabilidad/`).
 
-## Estado (actualizado el 2026-11-25)
+## Estado (actualizado el 2026-11-26)
 
-- **Decidido:** todo lo de este documento, incluidas las recomendaciones de §15, con un cambio: **el historial del
-  chat se guarda en el SQLite local de cada teléfono (`expo-sqlite`), nunca en el servidor** (ver §2.8 y §7.1).
+- **Decidido:** todo lo de este documento, incluidas las recomendaciones de §15, con tres cambios:
+  - **El historial del chat se guarda solo en cada dispositivo** (SQLite en el teléfono, `localStorage` en la web),
+    nunca en el servidor (ver §2.8 y §7.1).
+  - **Entrega:** Android con un APK (EAS Build, perfil `preview`); **iPhone con la versión web** en Safari, pensada
+    para el teléfono (no se paga el Apple Developer Program). La web de escritorio queda para después.
+  - **El comando de préstamo se llama "Vale"** en la app; el bot acepta `vale`, `vales` y `v` como alias de
+    `trabajador` (también por WhatsApp, vía el prompt de DeepSeek).
 - **Backend:** todo §2, en el commit `b717c01` (PR #5). Después, en la rama `feature/app-movil`, una corrección:
   `src/google_api.py` usa **una conexión HTTP por hilo** para Google. Antes todas las peticiones compartían un solo
   `httplib2.Http`, que no es seguro entre hilos. Cuando la app pedía varias pantallas a la vez, OpenSSL mezclaba
   los datos (`SSLError: RECORD_LAYER_FAILURE`, falsos 404/502) y el bot moría con SIGSEGV. Con WhatsApp solo podía
   pasar con dos administradores escribiendo al mismo tiempo.
-- **App:** implementada en `feature/app-movil`, sin commit: fases 0 y 2 a 6 de §14, salvo `eas.json` y las builds.
-  Todas las pantallas de §10 y el chat completo de §12. Las diferencias con este plan están en la tabla siguiente.
+- **App:** implementada en `feature/app-movil`, sin commit: fases 0 a 6 de §14. Todas las pantallas de §10 y el chat
+  completo de §12. Ícono a partir de `icono.jpg` (espiga de trigo), `app.json` y `eas.json` para Android, iOS y web.
+  APK compilado en EAS el 2026-11-26 (perfil `preview`) y probado en el emulador contra el servidor real.
+  Las diferencias con este plan están en la tabla siguiente.
+- **Ojo con git:** la regla `data/` del `.gitignore` de la raíz (para la base local del bot) ignoraba también
+  `MoviContabilidad/src/hooks/data/`. Los commits `0f7d5b3` y `a39df06` no tienen esos hooks, y el primer build de
+  EAS falló por eso. Ahora la regla es `/data/` (solo la carpeta de la raíz): hay que agregar `src/hooks/data/` en
+  el próximo commit.
+- **Web:** `web.output: "single"` (SPA). `public/index.html` (viewport para el teléfono, manifiesto, íconos de
+  "Agregar a inicio"), almacenamiento con `localStorage` (`*.web.ts`) y la raíz ajustada al visual viewport para el
+  teclado (`VisualViewportRoot.web.tsx`). El bot acepta su dominio con `APP_WEB_ORIGINS` (CORS).
 - **Verificado:**
   - Backend: `uv run pytest` → **148 pasan**. E2E con Google Drive/Sheets y DeepSeek reales
     (`uv run pytest --e2e`) → **47 pasan** (13 de la app, entre ellas lecturas concurrentes), 14 min.
-  - App: `npx tsc --noEmit` y `npx expo lint` limpios; `npx jest` → 19 suites, **65 pruebas**; `expo-doctor` 20/20;
-    `expo export` para Android e iOS empaqueta.
+  - Backend, 2026-11-26: `uv run pytest` → **155 pasan** (alias de vale, `APP_WEB_ORIGINS`). DeepSeek real
+    convierte "vale 2000 prueba app" y "Vale de 3 mil para prueba app" en `trabajador …`.
+  - App: `npx tsc --noEmit` y `npx expo lint` limpios; `npx jest` → 20 suites, **69 pruebas**; `expo-doctor` 20/20;
+    `expo export` empaqueta para Android, iOS y web.
+  - Web en Chrome del emulador de Android (build exportado, contra el bot local): vincular, Principal, Planillas,
+    chat con el teclado abierto (encabezado visible, banda encima del teclado, Enter envía) y "Instalar app".
   - En el emulador de Android (Expo Go) contra el bot local: vincular (mensaje por el webhook simulado), Principal, crear y abrir
     planillas con el calendario, chat (gasto, reintento sin duplicar, "Libre" con DeepSeek, préstamo con sugerencia
     de trabajador, deshacer con confirmación), Resumen, Planillas (acordeón, toque simple, doble toque abre la app
     de Sheets), Trabajadores y detalle, Mi perfil y edición, Ayuda.
 - **Falta:**
-  - Servidor: configurar `APP_JWT_SECRET` y `BOT_WHATSAPP_NUMBER` y exponer `/app/*` en el proxy.
-  - App: `eas.json`, ícono y splash definitivos, builds de preview, y probar en un iPhone real (el esquema
-    `googlesheets://` y el teclado en iOS no se han visto funcionando).
+  - Publicar la web (p. ej. EAS Hosting) y poner su dominio en `APP_WEB_ORIGINS` del servidor.
+  - Probar la web en Safari de un iPhone: el teclado (visual viewport) y "Agregar a pantalla de inicio".
 
 ### Diferencias entre este plan y lo implementado
 
@@ -37,7 +54,8 @@
 |---|---|---|
 | `react-native-keyboard-controller` + `KeyboardStickyFooter` | `KeyboardAvoider` (`ui/keyboard`): `KeyboardAvoidingView` de React Native con `behavior="padding"` y **sin** `keyboardVerticalOffset` | No viene en Expo Go. El encabezado de la app (`header` de JS) y el contenido son hermanos en un contenedor que empieza arriba de la ventana: sumar el alto del encabezado dejaba un hueco de ~110 dp sobre el teclado |
 | `react-native-gesture-handler` en `TapArea` | `Pressable` + temporizador (`APP.doubleTapDelayMs` = 260 ms) | Toque, doble toque y mantener presionado sin dependencia nativa extra; probado en `TapArea.test.tsx` |
-| `@react-native-async-storage/async-storage` | `expo-sqlite/kv-store` (`src/storage/preferences/`) | `expo-sqlite` ya estaba; una dependencia menos |
+| `@react-native-async-storage/async-storage` | `expo-sqlite/kv-store` en el teléfono, `localStorage` en la web (`src/storage/kv/`) | `expo-sqlite` ya estaba; una dependencia menos |
+| Web no era objetivo | Web para iPhone: `*.web.ts` en `src/storage/` (historial, clave-valor, token), `KeyboardAvoider.web.tsx`, `useKeyboardVisible.web.ts`, `VisualViewportRoot.web.tsx`, `public/index.html` | `expo-secure-store` no existe en la web, y `expo-sqlite` en la web exige cabeceras COOP/COEP (`credentialless`, que Safari no soporta). En Safari el teclado no achica la página: la raíz sigue al visual viewport |
 | Refresh token **y perfil** en `expo-secure-store` | Solo el refresh token en el llavero; el perfil en caché, en `expo-sqlite/kv-store` | Algunas versiones de iOS rechazan valores de más de ~2 KB en el llavero, y el perfil crece con los administradores; si fallaba, fallaba la vinculación |
 | `fetch` solo en `api/client/http.ts` | Solo en `api/client/transport.ts`; `http.ts` arma la petición, refresca y reintenta | Separar el transporte (timeout, abort, errores de red) de la lógica de sesión |
 | `app/index.tsx` + `EntryRedirect` y `/principal` | Principal es `app/(app)/index.tsx` (`/`); `Stack.Protected` usa `redirectTo` | SDK 58 redirige solo cuando el guard es falso; no hace falta una ruta de entrada |
@@ -55,6 +73,8 @@ Detalles de Android encontrados en el emulador (ya corregidos):
   elegido del calendario salía cuadrado. Por eso `dayCircle` tiene fondo blanco desde el inicio.
 - La `FlatList` `inverted` usa `scale: -1` en Android, que también voltea izquierda y derecha: el `paddingLeft` del
   contenedor aparecía a la derecha. El padding horizontal del chat va en cada fila.
+- En el APK, Vincular quedaba bajo la barra de estado: el `paddingTop` de `contentStyle` reemplazaba el de la zona
+  segura en `Screen`. Ahora se suma debajo de la zona segura (`Screen.test.tsx`).
 
 ## Índice
 
@@ -1879,7 +1899,7 @@ Implementado (19 suites, 65 pruebas, todas colocadas junto al archivo que prueba
 | Historial del chat | ✅ **Decidido: solo en el SQLite del teléfono** (§7.1). No se comparte entre administradores y se pierde al reinstalar | — |
 | Hojas en el selector | ✅ **Decidido:** Primera, Segunda, Tercera y aparece la siguiente si ya existen todas | — |
 | Teléfono del administrador | ✅ **Decidido:** solo lectura en v1 | Cambio con re-vinculación (fase 7) |
-| Web | ✅ **Decidido:** no es objetivo | — |
+| Web | ✅ **Decidido (2026-11-26):** versión web para iPhone, pensada para el teléfono; escritorio después | — |
 | Expo Go | ✅ **Resuelto:** sin gesture-handler ni keyboard-controller, toda la app corre en Expo Go (`expo-intent-launcher`, `expo-sqlite` y `expo-secure-store` vienen incluidos). La development build solo hará falta si se agrega una librería nativa | — |
 | Cuota de Google | Lecturas perezosas, caché corta en backend y en React Query, nada de leer totales por trabajador en la lista | Pedir aumento de cuota |
 | Latencia del chat | Parser estricto sin DeepSeek para lo que ya viene bien escrito | Siempre DeepSeek (más lento y con costo) |

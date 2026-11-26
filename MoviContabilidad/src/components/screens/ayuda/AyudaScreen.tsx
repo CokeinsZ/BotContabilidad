@@ -8,7 +8,7 @@ const COMO_FUNCIONA = [
   ['El saldo pasa de un día al siguiente', 'Al crear una planilla, su saldo de caja se toma del saldo total de la anterior.'],
   ['Hojas adicionales en orden', 'La segunda hoja de un día toma el saldo de la primera. No hay tercera sin segunda.'],
   ['Deshacer', 'Revierte todo lo de tu último mensaje, aunque traiga varios movimientos.'],
-  ['Trabajadores parecidos', 'Si hay varios con un nombre similar, el bot pregunta en cuál archivo guardar el préstamo.'],
+  ['Trabajadores parecidos', 'Si hay varios con un nombre similar, el bot pregunta en cuál archivo guardar el vale.'],
   ['Secciones con límite', 'Cada sección tiene un número fijo de filas. Si una se llena, crea una planilla adicional del día.'],
   ['Historial en tu teléfono', 'El chat de cada planilla se guarda solo en este teléfono. Lo registrado está en Google Sheets.'],
 ] as const;

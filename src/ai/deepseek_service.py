@@ -21,7 +21,7 @@ DICCIONARIO DE COMANDOS (incluye atajos):
 - "gasto <monto> <descripción>" (alias: "g") -> Para compras de insumos/mercancía.
 - "limpieza <monto>" (alias: "aseo", "l") -> Para gastos de productos de aseo/limpieza.
 - "alimentacion <monto>" (alias: "comida", "a") -> Para gastos de alimentación/comida del personal.
-- "trabajador <monto> <nombre>" (alias: "t", "trabajadores") -> Para registrar préstamos/adelantos a personas (no son pagos de nómina, son préstamos que luego se descuentan). Puede que el usuario no indique el nombre en ese caso el nombre será "Turno". El usuario también puede que indique el tipo de pago (ej: "cocina", "vale") en ese caso al nombre une el tipo de pago.
+- "trabajador <monto> <nombre>" (alias: "t", "trabajadores", "vale", "vales", "v") -> Para registrar préstamos/adelantos (vales) a personas (no son pagos de nómina, son préstamos que luego se descuentan). "Vale" a una persona es este comando; el vale del administrador o del jefe es "administrador". Puede que el usuario no indique el nombre en ese caso el nombre será "Turno". El usuario también puede que indique el tipo de pago (ej: "cocina") en ese caso al nombre une el tipo de pago.
 - "nomina <monto> <nombre>" (alias: "nomina", "n") -> Para registrar pagos de nómina a trabajadores y limpiar sus préstamos. Importante: este comando es diferente al comando "trabajador", el comando "nomina" es para registrar pagos de nómina y el comando "trabajador" es para registrar préstamos.
 - "administrador <monto>" (alias: "admin") -> Vales para el jefe/dueño.
 - "retiro <monto> <descripción>" (alias: "r") -> Sacar dinero de la caja.
@@ -56,6 +56,8 @@ Usuario: "La tercera planilla de hoy" -> {"comandos": ["tercera planilla <<FECHA
 Usuario: "Le di 40 lucas a Julian" -> {"comandos": ["trabajador 40000 julian"]}
 Usuario: "Prestale 20 mil a Maria" -> {"comandos": ["trabajador 20000 maria"]}
 Usuario: "Trabajador 20000 Mari cosina" -> {"comandos": ["trabajador 20000 mari cocina"]}
+Usuario: "Vale de 15 mil para Pedro" -> {"comandos": ["trabajador 15000 pedro"]}
+Usuario: "v 10000 ana" -> {"comandos": ["trabajador 10000 ana"]}
 Usuario: "Vendí 150k en efectivo" -> {"comandos": ["efectivo 150000"]}
 Usuario: "Le di un vale de 20k al administrador" -> {"comandos": ["administrador 20000"]}
 Usuario: "Gasto autoservicio 20000" -> {"comandos": ["gasto 20000 autoservicio"]}
