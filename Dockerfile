@@ -2,11 +2,14 @@ FROM python:3.14-slim
 
 # Logs de Python sin buffer (visibles en `docker logs` en tiempo real)
 ENV PYTHONUNBUFFERED=1
+# `uv run` no debe re-sincronizar al arrancar (instalaría el grupo dev, ej. pytest)
+ENV UV_NO_SYNC=1
 
 WORKDIR /app
 
 # Instalar curl y limpiar cache
-RUN apt-get update && apt-get install -y curl 
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Instalar uv para gestión de dependencias
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/

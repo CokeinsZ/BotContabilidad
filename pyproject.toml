@@ -12,7 +12,19 @@ dependencies = [
     "google-auth-oauthlib>=1.2.4",
     "httpx>=0.28.1",
     "openai>=2.21.0",
+    "pyjwt>=2.15.1",
     "python-dotenv>=1.2.1",
     "requests>=2.32.5",
+    "tzdata>=2026.6",
     "uvicorn>=0.40.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = ["e2e: prueba de punta a punta contra el bot local y servicios reales"]

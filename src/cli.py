@@ -3,7 +3,8 @@ Herramienta de línea de comandos para administrar businesses.
 
 Uso (desde la raíz del proyecto):
 
-    python src/cli.py add-business "Pan de Oro" <sheets_folder_id>
+    python src/cli.py add-business "Pan de Oro" <sheets_folder_id> [--workers-folder <id>]
+    python src/cli.py set-workers-folder <business_id> <workers_folder_id>
     python src/cli.py add-admin <business_id> "Dairo Carvajal" 573001234567
     python src/cli.py list-businesses
     python src/cli.py list-admins <business_id>

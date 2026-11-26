@@ -1,27 +1,100 @@
 """
 Cliente de bajo nivel para la API de Google Sheets.
 
-Optimización clave respecto a la versión anterior: todas las escrituras y
-lecturas múltiples usan `values.batchUpdate` / `values.batchGet`, reduciendo
-cada operación de negocio a un máximo de 2 llamadas HTTP a la API (antes eran
-3 por cada comando).
+Principios:
+- Las escrituras y lecturas múltiples usan `values.batchUpdate` /
+  `values.batchGet` (una llamada HTTP por operación).
+- Las lecturas de datos usan `UNFORMATTED_VALUE` (números como números). Leer
+  el valor formateado ("$1.234.567") y escribirlo de vuelta con RAW dejaba
+  texto donde debía haber un número.
+- Toda operación leer-contador → escribir se hace bajo un lock por
+  spreadsheet: dos administradores escribiendo a la vez en la misma planilla
+  ya no pueden pisarse la misma fila (el bot corre en un único proceso).
 """
+import threading
+from contextlib import contextmanager
+from dataclasses import dataclass
+from enum import Enum
+
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+from google_api import execute
+
 from auth.google_auth_manager import GoogleAuthManager
 from config.log import log_error, log_warning
+from sheets.a1 import cell_at, range_start
 from sheets.layout import PlanillaLayout, SheetRegion
+
+UNFORMATTED = "UNFORMATTED_VALUE"
+FORMULA = "FORMULA"
+
+
+class RegionFullError(Exception):
+    """La región ya ocupó todas sus filas válidas."""
+
+    def __init__(self, region: SheetRegion):
+        super().__init__(f"Región '{region.label}' llena ({region.capacity} filas)")
+        self.region = region
+
+
+class RemoveResult(Enum):
+    REMOVED = "removed"
+    NOT_FOUND = "not_found"   # la fila ya no existe (borrada a mano u otro deshacer)
+    ERROR = "error"
+
+
+class RestoreResult(Enum):
+    RESTORED = "restored"
+    CHANGED = "changed"       # alguien modificó la celda después: no se pisa
+    ERROR = "error"
+
+
+@dataclass(frozen=True)
+class DailyTotals:
+    total_expenses: object
+    day_cash: object
+    total_sales: object
+    previous_balance: object
+    total_balance: object
+
+
+@dataclass(frozen=True)
+class PlanillaOverview:
+    """Totales de la planilla y el contador de cada sección (atributo del layout -> valor)."""
+
+    totals: DailyTotals
+    counters: dict[str, object]
+
+
+def same_value(left, right) -> bool:
+    """Compara valores de celda tolerando 5000 vs 5000.0 y None vs ''."""
+    left = "" if left is None else left
+    right = "" if right is None else right
+    numeric = (int, float)
+    if isinstance(left, numeric) and isinstance(right, numeric) and not isinstance(left, bool):
+        return float(left) == float(right)
+    return str(left).strip() == str(right).strip()
+
+
+def _is_formula(value) -> bool:
+    return isinstance(value, str) and value.startswith("=")
+
+
+def _pad(row: list, width: int) -> list:
+    return list(row) + [""] * (width - len(row))
 
 
 class SheetsClient:
     """Operaciones sobre planillas, agnóstico del business (stateless)."""
 
-    def __init__(self, auth_manager: GoogleAuthManager, layout: PlanillaLayout | None = None):
+    def __init__(self, auth_manager: GoogleAuthManager | None, layout: PlanillaLayout | None = None):
         self._auth_manager = auth_manager
         self.layout = layout or PlanillaLayout()
         self._service = None
         self._credentials_used = None
+        self._locks: dict[str, threading.RLock] = {}
+        self._locks_guard = threading.Lock()
 
     @property
     def service(self):
@@ -40,238 +113,279 @@ class SheetsClient:
         return self._service
 
     # ------------------------------------------------------------------
-    # Operaciones por lotes (batch)
+    # Concurrencia
     # ------------------------------------------------------------------
-    def get_values(self, sheet_id: str, ranges: list[str]) -> dict[str, list[list]]:
+    @contextmanager
+    def lock(self, spreadsheet_id: str):
+        """Serializa las operaciones compuestas sobre un mismo spreadsheet."""
+        with self._locks_guard:
+            lock = self._locks.setdefault(spreadsheet_id, threading.RLock())
+        with lock:
+            yield
+
+    # ------------------------------------------------------------------
+    # Lecturas y escrituras por lotes
+    # ------------------------------------------------------------------
+    def get_values(
+        self, sheet_id: str, ranges: list[str], render: str = UNFORMATTED
+    ) -> dict[str, list[list]] | None:
         """Lee varios rangos en UNA sola llamada (`values.batchGet`).
 
         Las claves del resultado son los rangos EXACTOS solicitados (la API
-        devuelve los valueRanges en el mismo orden de la petición), así los
-        rangos con prefijo de hoja (ej. "principal!C123") hacen match
-        correctamente.
+        devuelve los valueRanges en el mismo orden de la petición). Devuelve
+        None si la llamada falla (distinto de "celdas vacías").
         """
         try:
-            response = (
+            response = execute(
                 self.service.spreadsheets()
                 .values()
-                .batchGet(spreadsheetId=sheet_id, ranges=ranges)
-                .execute()
+                .batchGet(spreadsheetId=sheet_id, ranges=ranges, valueRenderOption=render)
             )
             value_ranges = response.get("valueRanges", [])
             result: dict[str, list[list]] = {}
             for index, requested in enumerate(ranges):
-                if index < len(value_ranges):
-                    result[requested] = value_ranges[index].get("values", [[]])
-                else:
-                    result[requested] = [[]]
+                values = value_ranges[index].get("values", []) if index < len(value_ranges) else []
+                result[requested] = values
             return result
         except HttpError as error:
-            log_error(
-                "leyendo rangos de Sheets",
-                error,
-                f"sheet_id={sheet_id} ranges={ranges}",
-            )
-            return {}
+            log_error("leyendo rangos de Sheets", error, f"sheet_id={sheet_id} ranges={ranges}")
+            return None
         except Exception as error:
-            log_error(
-                "leyendo rangos de Sheets (inesperado)",
-                error,
-                f"sheet_id={sheet_id} ranges={ranges}",
-            )
-            return {}
+            log_error("leyendo rangos de Sheets (inesperado)", error, f"sheet_id={sheet_id} ranges={ranges}")
+            return None
 
-    def set_values(self, sheet_id: str, updates: dict[str, list[list]]) -> bool:
-        """Escribe varios rangos en UNA sola llamada (`values.batchUpdate`)."""
-        try:
-            body = {
-                "valueInputOption": "RAW",
-                "data": [{"range": key, "values": values} for key, values in updates.items()],
-            }
-            result = (
-                self.service.spreadsheets()
-                .values()
-                .batchUpdate(spreadsheetId=sheet_id, body=body)
-                .execute()
-            )
-            updated = result.get("totalUpdatedCells")
-            if not updated:
-                log_warning(
-                    "escribiendo rangos en Sheets (0 celdas actualizadas)",
-                    f"sheet_id={sheet_id} ranges={list(updates)} "
-                    f"updates={updates} response={result}",
-                )
-                return False
-            return True
-        except HttpError as error:
-            log_error(
-                "escribiendo rangos en Sheets",
-                error,
-                f"sheet_id={sheet_id} ranges={list(updates)} updates={updates}",
-            )
-            return False
-        except Exception as error:
-            log_error(
-                "escribiendo rangos en Sheets (inesperado)",
-                error,
-                f"sheet_id={sheet_id} ranges={list(updates)} updates={updates}",
-            )
-            return False
-
-    def get_value(self, sheet_id: str, range_a1: str) -> str | None:
-        """Lee una única celda."""
-        values = self.get_values(sheet_id, [range_a1]).get(range_a1, [[]])
+    def get_value(self, sheet_id: str, range_a1: str, render: str = UNFORMATTED):
+        """Lee una única celda (None si está vacía o si la lectura falla)."""
+        values = (self.get_values(sheet_id, [range_a1], render) or {}).get(range_a1, [])
         if values and values[0]:
             return values[0][0]
         return None
 
+    def set_values(
+        self, sheet_id: str, updates: dict[str, list[list]], input_option: str = "RAW"
+    ) -> bool:
+        """Escribe varios rangos en UNA sola llamada (`values.batchUpdate`)."""
+        try:
+            body = {
+                "valueInputOption": input_option,
+                "data": [{"range": key, "values": values} for key, values in updates.items()],
+            }
+            result = execute(
+                self.service.spreadsheets()
+                .values()
+                .batchUpdate(spreadsheetId=sheet_id, body=body)
+            )
+            if not result.get("totalUpdatedCells"):
+                log_warning(
+                    "escribiendo rangos en Sheets (0 celdas actualizadas)",
+                    f"sheet_id={sheet_id} ranges={list(updates)} updates={updates} response={result}",
+                )
+                return False
+            return True
+        except HttpError as error:
+            log_error("escribiendo rangos en Sheets", error, f"sheet_id={sheet_id} ranges={list(updates)} updates={updates}")
+            return False
+        except Exception as error:
+            log_error("escribiendo rangos en Sheets (inesperado)", error, f"sheet_id={sheet_id} ranges={list(updates)} updates={updates}")
+            return False
+
+    def write_preserving_formulas(self, sheet_id: str, updates: dict[str, list[list]]) -> bool:
+        """Escribe valores leídos con render FORMULA conservando las fórmulas.
+
+        Todo se escribe RAW (los textos como "24-11-2026" no se convierten en
+        fechas) y luego, solo si hay celdas con fórmula, esas celdas se
+        reescriben con USER_ENTERED para que vuelvan a ser fórmulas.
+        """
+        formula_updates: dict[str, list[list]] = {}
+        for range_a1, rows in updates.items():
+            prefix, first_column, first_row = range_start(range_a1)
+            for row_offset, row in enumerate(rows):
+                for column_offset, value in enumerate(row):
+                    if _is_formula(value):
+                        cell = cell_at(prefix, first_column + column_offset, first_row + row_offset)
+                        formula_updates[cell] = [[value]]
+        if not self.set_values(sheet_id, updates):
+            return False
+        if formula_updates:
+            return self.set_values(sheet_id, formula_updates, input_option="USER_ENTERED")
+        return True
+
     # ------------------------------------------------------------------
     # Regiones dinámicas (gastos, trabajadores, retiros, ...)
     # ------------------------------------------------------------------
-    def append_to_region(self, sheet_id: str, region: SheetRegion, values: list) -> bool:
-        """Agrega una fila a una región y avanza su contador. 2 llamadas API."""
-        try:
-            counter = self.get_value(sheet_id, region.counter_cell)
-        except Exception as error:
-            log_error(
-                "append_to_region leyendo contador",
-                error,
-                f"sheet_id={sheet_id} counter_cell={region.counter_cell} "
-                f"region={region} values={values}",
-            )
-            return False
-        if counter is None or (isinstance(counter, str) and not counter.strip()):
-            log_warning(
-                "append_to_region sin contador (celda vacía o ilegible)",
-                f"sheet_id={sheet_id} counter_cell={region.counter_cell} "
-                f"counter={counter!r} region={region} values={values} "
-                f"-> revisa que la planilla tenga el layout esperado",
-            )
-            return False
+    def _read_counter(self, sheet_id: str, region: SheetRegion) -> int | None:
+        counter = self.get_value(sheet_id, region.counter_cell)
         try:
             row = int(counter)
-        except (TypeError, ValueError) as error:
-            log_error(
-                "append_to_region con contador no numérico",
-                error,
-                f"sheet_id={sheet_id} counter_cell={region.counter_cell} "
-                f"counter={counter!r} region={region} values={values}",
-            )
-            return False
-
-        return self.set_values(
-            sheet_id,
-            {
-                region.row_range(row): [values],
-                region.counter_cell: [[row + 1]],
-            },
-        )
-
-    def undo_last_entry(self, sheet_id: str, region: SheetRegion) -> bool:
-        """Elimina la última fila de una región y retrocede su contador."""
-        counter = self.get_value(sheet_id, region.counter_cell)
-        if counter is None or (isinstance(counter, str) and not counter.strip()):
+        except (TypeError, ValueError):
             log_warning(
-                "undo_last_entry sin contador",
-                f"sheet_id={sheet_id} counter_cell={region.counter_cell} "
-                f"counter={counter!r} region={region}",
+                "contador de región vacío o no numérico",
+                f"sheet_id={sheet_id} counter_cell={region.counter_cell} counter={counter!r} "
+                f"region={region.label!r} -> revisa que la planilla tenga el layout esperado",
             )
-            return False
-        try:
-            target_row = int(counter) - 1
-        except (TypeError, ValueError) as error:
-            log_error(
-                "undo_last_entry con contador no numérico",
-                error,
-                f"sheet_id={sheet_id} counter_cell={region.counter_cell} "
-                f"counter={counter!r} region={region}",
-            )
-            return False
-        if target_row < region.min_row:
+            return None
+        if row < region.min_row:
             log_warning(
-                "undo_last_entry fuera de rango (nada que deshacer)",
-                f"sheet_id={sheet_id} target_row={target_row} "
-                f"min_row={region.min_row} region={region}",
+                "contador de región por debajo de la fila mínima",
+                f"sheet_id={sheet_id} counter_cell={region.counter_cell} counter={row} "
+                f"min_row={region.min_row} region={region.label!r}",
             )
-            return False
+            return None
+        return row
 
-        try:
-            self.service.spreadsheets().values().batchClear(
-                spreadsheetId=sheet_id,
-                body={"ranges": [region.row_range(target_row)]},
-            ).execute()
-        except HttpError as error:
-            log_error(
-                "limpiando fila en Sheets",
-                error,
-                f"sheet_id={sheet_id} target_row={target_row} "
-                f"range={region.row_range(target_row)}",
-            )
-            return False
-        except Exception as error:
-            log_error(
-                "limpiando fila en Sheets (inesperado)",
-                error,
-                f"sheet_id={sheet_id} target_row={target_row} "
-                f"range={region.row_range(target_row)}",
-            )
-            return False
+    def append_to_region(self, sheet_id: str, region: SheetRegion, values: list) -> int | None:
+        """Agrega una fila a una región y avanza su contador (2 llamadas API).
 
-        return self.set_values(sheet_id, {region.counter_cell: [[target_row]]})
+        Devuelve la fila escrita, o None si falla.
+
+        Raises:
+            RegionFullError: si la región ya usó todas sus filas.
+        """
+        with self.lock(sheet_id):
+            row = self._read_counter(sheet_id, region)
+            if row is None:
+                return None
+            if row > region.max_row:
+                log_warning(
+                    "región llena",
+                    f"sheet_id={sheet_id} region={region.label!r} counter={row} max_row={region.max_row}",
+                )
+                raise RegionFullError(region)
+            ok = self.set_values(
+                sheet_id,
+                {region.row_range(row): [list(values)], region.counter_cell: [[row + 1]]},
+            )
+            return row if ok else None
+
+    def remove_region_entry(
+        self, sheet_id: str, region: SheetRegion, row: int, values: list
+    ) -> RemoveResult:
+        """Elimina UNA entrada concreta de una región y compacta las de abajo.
+
+        A diferencia del antiguo "borrar la última fila", se busca la fila que
+        escribió este comando (verificando su contenido), así un deshacer de
+        un administrador no borra lo que escribió otro. Las filas posteriores
+        suben una posición y el contador retrocede uno.
+        """
+        with self.lock(sheet_id):
+            counter = self._read_counter(sheet_id, region)
+            if counter is None:
+                return RemoveResult.ERROR
+            last_row = min(counter, region.max_row + 1) - 1
+            if last_row < region.min_row:
+                return RemoveResult.NOT_FOUND
+
+            block_range = region.block_range(region.min_row, last_row)
+            block = (self.get_values(sheet_id, [block_range], FORMULA) or {}).get(block_range)
+            if block is None:
+                return RemoveResult.ERROR
+            rows = [_pad(r, region.width) for r in block]
+            rows += [_pad([], region.width)] * (last_row - region.min_row + 1 - len(rows))
+
+            def matches(index: int) -> bool:
+                current = rows[index]
+                return all(same_value(current[i], v) for i, v in enumerate(values))
+
+            preferred = row - region.min_row
+            if 0 <= preferred < len(rows) and matches(preferred):
+                target = preferred
+            else:
+                target = next((i for i in range(len(rows) - 1, -1, -1) if matches(i)), None)
+            if target is None:
+                log_warning(
+                    "deshacer: la fila ya no existe en la región",
+                    f"sheet_id={sheet_id} region={region.label!r} row={row} values={values}",
+                )
+                return RemoveResult.NOT_FOUND
+
+            shifted = rows[target + 1:] + [region.blank_row]
+            first_row = region.min_row + target
+            ok = self.write_preserving_formulas(
+                sheet_id,
+                {
+                    region.block_range(first_row, last_row): shifted,
+                    region.counter_cell: [[last_row]],
+                },
+            )
+            return RemoveResult.REMOVED if ok else RemoveResult.ERROR
+
+    def restore_cell(self, sheet_id: str, cell: str, expected_current, restore_value) -> RestoreResult:
+        """Restaura una celda solo si aún tiene el valor que escribió el bot."""
+        with self.lock(sheet_id):
+            values = self.get_values(sheet_id, [cell], FORMULA)
+            if values is None:
+                return RestoreResult.ERROR
+            current = values.get(cell, [])
+            current_value = current[0][0] if current and current[0] else ""
+            if not same_value(current_value, expected_current):
+                log_warning(
+                    "deshacer: la celda cambió después del comando, no se restaura",
+                    f"sheet_id={sheet_id} cell={cell} current={current_value!r} expected={expected_current!r}",
+                )
+                return RestoreResult.CHANGED
+            ok = self.write_preserving_formulas(sheet_id, {cell: [[restore_value]]})
+            return RestoreResult.RESTORED if ok else RestoreResult.ERROR
 
     # ------------------------------------------------------------------
     # Resumen diario
     # ------------------------------------------------------------------
-    def get_daily_totals(
-        self, sheet_id: str
-    ) -> tuple[str, str, str, str, str] | None:
-        """Devuelve (gastos, efectivo, ventas, saldo_previo, saldo_total)."""
-        values = self.get_values(sheet_id, [self.layout.totals_range]).get(
-            self.layout.totals_range, [[]]
-        )
+    def _totals_cells(self) -> list[str]:
+        layout = self.layout
+        return [
+            layout.total_expenses_cell,
+            layout.day_cash_cell,
+            layout.total_sales_cell,
+            layout.generated_cash_cell,
+            layout.total_cash_cell,
+        ]
 
-        def value_at(index: int, default: str = "0") -> str:
-            if index < len(values) and values[index]:
-                return values[index][0]
-            return default
+    def get_daily_totals(self, sheet_id: str) -> DailyTotals | None:
+        """Lee los totales del bloque "MANEJO DEL EFECTIVO" por celda nombrada."""
+        overview = self.get_planilla_overview(sheet_id)
+        return overview.totals if overview is not None else None
 
-        return (
-            value_at(0),  # B38 gastos totales
-            value_at(1),  # B39 efectivo del día
-            value_at(2),  # B40 ventas totales
-            value_at(4),  # B42 saldo previo
-            value_at(8),  # B46 saldo total
+    def get_planilla_overview(self, sheet_id: str) -> "PlanillaOverview | None":
+        """Totales y contadores de todas las secciones en UNA sola lectura."""
+        cells = self._totals_cells()
+        regions = self.layout.daily_regions
+        counters = [region.counter_cell for _attr, region in regions]
+        values = self.get_values(sheet_id, cells + counters)
+        if values is None:
+            return None
+
+        def value_of(cell: str, default):
+            rows = values.get(cell, [])
+            return rows[0][0] if rows and rows[0] else default
+
+        return PlanillaOverview(
+            totals=DailyTotals(*(value_of(cell, 0) for cell in cells)),
+            counters={attr: value_of(region.counter_cell, None) for attr, region in regions},
         )
 
     # ------------------------------------------------------------------
     # Operaciones estructurales de hojas (batchUpdate)
     # ------------------------------------------------------------------
-    def get_sheet_id_by_name(self, spreadsheet_id: str, sheet_name: str) -> int | None:
-        """Devuelve el sheetId (numérico) de una hoja por su nombre."""
+    def list_sheets(self, spreadsheet_id: str) -> list[tuple[int, str]] | None:
+        """(sheetId, título) de todas las hojas del spreadsheet."""
         try:
-            spreadsheet = self.service.spreadsheets().get(
+            spreadsheet = execute(self.service.spreadsheets().get(
                 spreadsheetId=spreadsheet_id, fields="sheets(properties(sheetId,title))"
-            ).execute()
-            for sheet in spreadsheet.get("sheets", []):
-                if sheet["properties"]["title"] == sheet_name:
-                    return sheet["properties"]["sheetId"]
-            log_warning(
-                "hoja no encontrada en spreadsheet",
-                f"spreadsheet_id={spreadsheet_id} sheet_name={sheet_name!r}",
-            )
-            return None
-        except HttpError as error:
-            log_error(
-                "obteniendo sheetId",
-                error,
-                f"spreadsheet_id={spreadsheet_id} sheet_name={sheet_name!r}",
-            )
-            return None
+            ))
+            return [
+                (sheet["properties"]["sheetId"], sheet["properties"]["title"])
+                for sheet in spreadsheet.get("sheets", [])
+            ]
         except Exception as error:
-            log_error(
-                "obteniendo sheetId (inesperado)",
-                error,
-                f"spreadsheet_id={spreadsheet_id} sheet_name={sheet_name!r}",
-            )
+            log_error("listando hojas del spreadsheet", error, f"spreadsheet_id={spreadsheet_id}")
+            return None
+
+    def _batch_update(self, spreadsheet_id: str, request: dict, context: str):
+        try:
+            return execute(self.service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id, body={"requests": [request]}
+            ))
+        except Exception as error:
+            log_error(context, error, f"spreadsheet_id={spreadsheet_id} request={request}")
             return None
 
     def duplicate_sheet(self, spreadsheet_id: str, source_sheet_id: int, new_name: str) -> int | None:
@@ -279,162 +393,35 @@ class SheetsClient:
 
         Devuelve el sheetId de la nueva hoja.
         """
-        try:
-            request = {
-                "duplicateSheet": {
-                    "sourceSheetId": source_sheet_id,
-                    "newSheetName": new_name,
-                }
-            }
-            response = self.service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id, body={"requests": [request]}
-            ).execute()
-            new_sheet_id = response["replies"][0]["duplicateSheet"]["properties"]["sheetId"]
-            return new_sheet_id
-        except HttpError as error:
-            log_error(
-                "duplicando hoja",
-                error,
-                f"spreadsheet_id={spreadsheet_id} source_sheet_id={source_sheet_id} "
-                f"new_name={new_name!r}",
-            )
+        response = self._batch_update(
+            spreadsheet_id,
+            {"duplicateSheet": {"sourceSheetId": source_sheet_id, "newSheetName": new_name}},
+            "duplicando hoja",
+        )
+        if response is None:
             return None
-        except Exception as error:
-            log_error(
-                "duplicando hoja (inesperado)",
-                error,
-                f"spreadsheet_id={spreadsheet_id} source_sheet_id={source_sheet_id} "
-                f"new_name={new_name!r}",
-            )
-            return None
+        return response["replies"][0]["duplicateSheet"]["properties"]["sheetId"]
 
-    def delete_rows(self, spreadsheet_id: str, sheet_id: int, start_row: int, end_row: int) -> bool:
-        """Borra filas [start_row, end_row) (1-indexed, end exclusivo) de una hoja.
+    def delete_sheet(self, spreadsheet_id: str, sheet_id: int) -> bool:
+        response = self._batch_update(
+            spreadsheet_id, {"deleteSheet": {"sheetId": sheet_id}}, "eliminando hoja"
+        )
+        return response is not None
 
-        Nota: la API usa índices 0-based, así que restamos 1.
-        """
-        try:
-            request = {
+    def delete_rows(self, spreadsheet_id: str, sheet_id: int, first_row: int, last_row: int) -> bool:
+        """Borra las filas [first_row, last_row] (1-indexed, inclusive) de una hoja."""
+        response = self._batch_update(
+            spreadsheet_id,
+            {
                 "deleteDimension": {
                     "range": {
                         "sheetId": sheet_id,
                         "dimension": "ROWS",
-                        "startIndex": start_row - 1,
-                        "endIndex": end_row - 1,
+                        "startIndex": first_row - 1,
+                        "endIndex": last_row,
                     }
                 }
-            }
-            self.service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id, body={"requests": [request]}
-            ).execute()
-            return True
-        except HttpError as error:
-            log_error(
-                "borrando filas",
-                error,
-                f"spreadsheet_id={spreadsheet_id} sheet_id={sheet_id} "
-                f"rows={start_row}-{end_row}",
-            )
-            return False
-        except Exception as error:
-            log_error(
-                "borrando filas (inesperado)",
-                error,
-                f"spreadsheet_id={spreadsheet_id} sheet_id={sheet_id} "
-                f"rows={start_row}-{end_row}",
-            )
-            return False
-
-    def clear_range(self, spreadsheet_id: str, range_a1: str, fill_value: str | int = "") -> bool:
-        """Limpia un rango escribiendo un valor (vacío o 0)."""
-        try:
-            # Primero obtener dimensiones del rango para saber cuántas celdas escribir
-            values = self.get_values(spreadsheet_id, [range_a1]).get(range_a1, [[]])
-            if not values:
-                return True
-            rows = len(values)
-            cols = max(len(row) for row in values) if values else 1
-            fill_values = [[fill_value] * cols for _ in range(rows)]
-            return self.set_values(spreadsheet_id, {range_a1: fill_values})
-        except HttpError as error:
-            log_error(
-                "limpiando rango",
-                error,
-                f"spreadsheet_id={spreadsheet_id} range={range_a1!r}",
-            )
-            return False
-        except Exception as error:
-            log_error(
-                "limpiando rango (inesperado)",
-                error,
-                f"spreadsheet_id={spreadsheet_id} range={range_a1!r}",
-            )
-            return False
-
-    def clear_range_a1(self, spreadsheet_id: str, range_a1: str, fill_value: str | int = "") -> bool:
-        """Limpia un rango A1 específico escribiendo fill_value.
-
-        Soporta notación con nombre de hoja: "'Hoja 1'!A1:B2" o "A1:B2".
-        """
-        try:
-            # Separar nombre de hoja si existe: "'Hoja'!A1:B2" -> sheet_part, cell_range
-            if "!" in range_a1:
-                _, cell_range = range_a1.split("!", 1)
-            else:
-                cell_range = range_a1
-
-            # Parsear el rango de celdas para saber dimensiones
-            if ":" not in cell_range:
-                # Celda simple
-                fill_values = [[fill_value]]
-            else:
-                start, end = cell_range.split(":")
-                # Parsear coordenadas (solo letras + números, sin nombre de hoja)
-                def parse_cell(cell):
-                    col = ""
-                    row = ""
-                    for ch in cell:
-                        if ch.isalpha():
-                            col += ch
-                        else:
-                            row += ch
-                    return col, int(row)
-                start_col, start_row = parse_cell(start)
-                end_col, end_row = parse_cell(end)
-                rows = end_row - start_row + 1
-                # Contar columnas
-                def col_to_num(col):
-                    num = 0
-                    for ch in col:
-                        num = num * 26 + (ord(ch.upper()) - ord('A') + 1)
-                    return num
-                cols = col_to_num(end_col) - col_to_num(start_col) + 1
-                fill_values = [[fill_value] * cols for _ in range(rows)]
-
-            # Usar el range_a1 original (con nombre de hoja si lo tenía) para la escritura
-            return self.set_values(spreadsheet_id, {range_a1: fill_values})
-        except HttpError as error:
-            log_error(
-                "limpiando rango A1",
-                error,
-                f"spreadsheet_id={spreadsheet_id} range={range_a1!r}",
-            )
-            return False
-        except Exception as error:
-            log_error(
-                "limpiando rango A1 / parseando rango",
-                error,
-                f"spreadsheet_id={spreadsheet_id} range={range_a1!r}",
-            )
-            return False
-
-    def reset_counter(self, spreadsheet_id: str, counter_cell: str, value: int) -> bool:
-        """Reinicia un contador a un valor específico."""
-        return self.set_values(spreadsheet_id, {counter_cell: [[value]]})
-
-    # ------------------------------------------------------------------
-    # Operaciones específicas para nómina
-    # ------------------------------------------------------------------
-    def get_worker_loan_sum(self, spreadsheet_id: str) -> str | None:
-        """Obtiene la suma de préstamos (B30 de la hoja 'principal')."""
-        return self.get_value(spreadsheet_id, "principal!B30")
+            },
+            "borrando filas",
+        )
+        return response is not None

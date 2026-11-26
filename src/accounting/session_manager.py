@@ -1,50 +1,25 @@
 """
 Sesiones de usuario del bot.
 
-Cada par (business, teléfono) tiene su propia sesión con su planilla activa y
-su última acción deshacible. Esto elimina el estado global de la versión
-anterior, donde todos los usuarios compartían una única planilla activa.
+Cada (business, teléfono, canal) tiene su propia sesión con su planilla
+activa, su último mensaje deshacible y su selección pendiente. El canal
+separa WhatsApp de la app móvil: un `deshacer` en WhatsApp nunca revierte lo
+que se hizo en la app (y viceversa), y la planilla activa de uno no cambia la
+del otro.
 """
 import threading
 from dataclasses import dataclass, field
 from typing import Callable, Union
 
-from sheets.layout import SheetRegion
-
+from accounting.undo import UndoSnapshot, UndoStep
 
 #: Respuesta de un comando: uno o varios mensajes para el usuario.
 CommandResult = Union[str, list[str]]
 
+#: Canales por los que llega un administrador.
+WHATSAPP = "whatsapp"
+APP = "app"
 
-@dataclass
-class UndoStep:
-    """Un paso individual de deshacer (una operación atómica)."""
-
-    sheet_id: str
-    region: SheetRegion | None = None      # si la acción agregó una fila
-    cell: str | None = None                # si la acción sobrescribió una celda
-    restore_value: object = ""             # valor a restaurar en `cell`
-
-
-@dataclass
-class UndoSnapshot:
-    """Información necesaria para revertir la última acción del usuario.
-
-    Soporta múltiples pasos (ej: préstamo que escribe en planilla + archivo trabajador).
-    """
-
-    description: str
-    steps: list[UndoStep] = field(default_factory=list)
-
-    @classmethod
-    def single(cls, description: str, sheet_id: str,
-               region: SheetRegion | None = None,
-               cell: str | None = None,
-               restore_value: object = "") -> "UndoSnapshot":
-        """Crea un snapshot con un solo paso (compatibilidad)."""
-        return cls(description=description, steps=[
-            UndoStep(sheet_id=sheet_id, region=region, cell=cell, restore_value=restore_value)
-        ])
 
 @dataclass
 class PendingSelection:
@@ -55,7 +30,30 @@ class PendingSelection:
     """
 
     description: str
-    resolver: Callable[[object, str], CommandResult]  # (CommandContext, texto) -> respuesta
+    menu: str                 # texto que se muestra (y se repite si la opción es inválida)
+    options: int              # opciones válidas: 1..options
+    resolver: Callable[[object, int], CommandResult]  # (CommandContext, opción válida) -> respuesta
+    # Lo que escribió el comando que abrió el menú: si el usuario no elige
+    # ninguna opción, se revierte (el comando se cancela completo).
+    cancel_steps: list[UndoStep] = field(default_factory=list)
+    cancel_descriptions: list[str] = field(default_factory=list)
+    # Para clientes que dibujan la pregunta como botones (app móvil): la
+    # pregunta sin las opciones y la etiqueta de cada opción (1..options).
+    prompt: str = ""
+    option_labels: list[str] = field(default_factory=list)
+    # Planilla activa cuando se hizo la pregunta.
+    sheet_id: str | None = None
+    sheet_name: str | None = None
+
+
+@dataclass(frozen=True)
+class SessionState:
+    """Foto de la sesión para clientes que no son WhatsApp (solo lectura)."""
+
+    active_sheet_id: str | None
+    active_sheet_name: str | None
+    undo_description: str | None          # qué revertiría 'deshacer' (None = nada)
+    selection: PendingSelection | None    # pregunta que hay que responder ya
 
 
 @dataclass
@@ -64,30 +62,47 @@ class UserSession:
 
     business_id: int
     phone_number: str
+    channel: str = WHATSAPP
     active_sheet_id: str | None = None
     active_sheet_name: str | None = None
     undo_snapshot: UndoSnapshot | None = None
-    pending_selection: PendingSelection | None = None
+    # Cola de preguntas numeradas: se muestran y se responden de a una.
+    pending_selections: list[PendingSelection] = field(default_factory=list)
+
+    def ask(self, selection: PendingSelection) -> bool:
+        """Encola una pregunta. True si es la que se debe mostrar ya (la primera)."""
+        self.pending_selections.append(selection)
+        return len(self.pending_selections) == 1
 
     def set_active_sheet(self, sheet_id: str, sheet_name: str) -> None:
+        # El deshacer NO se borra al cambiar de planilla: cada paso guarda su
+        # propio sheet_id, así que sigue siendo preciso, y un mensaje puede
+        # traer "hoja X" junto con movimientos que deben deshacerse juntos.
         self.active_sheet_id = sheet_id
         self.active_sheet_name = sheet_name
-        # Al cambiar de planilla, la acción anterior ya no aplica.
-        self.undo_snapshot = None
+
+    def state(self) -> SessionState:
+        snapshot = self.undo_snapshot
+        return SessionState(
+            active_sheet_id=self.active_sheet_id,
+            active_sheet_name=self.active_sheet_name,
+            undo_description=snapshot.description if snapshot and snapshot.steps else None,
+            selection=self.pending_selections[0] if self.pending_selections else None,
+        )
 
 
 class SessionManager:
     """Administra las sesiones en memoria, seguro para múltiples hilos."""
 
     def __init__(self):
-        self._sessions: dict[tuple[int, str], UserSession] = {}
+        self._sessions: dict[tuple[int, str, str], UserSession] = {}
         self._lock = threading.Lock()
 
-    def get_or_create(self, business_id: int, phone_number: str) -> UserSession:
-        key = (business_id, phone_number)
+    def get_or_create(self, business_id: int, phone_number: str, channel: str = WHATSAPP) -> UserSession:
+        key = (business_id, phone_number, channel)
         with self._lock:
             session = self._sessions.get(key)
             if session is None:
-                session = UserSession(business_id=business_id, phone_number=phone_number)
+                session = UserSession(business_id=business_id, phone_number=phone_number, channel=channel)
                 self._sessions[key] = session
             return session

@@ -1,11 +1,14 @@
 """Comandos de manejo de efectivo: retiros, saldo, efectivo e inversiones."""
 from abc import abstractmethod
-from typing import ClassVar, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from accounting.commands.base import Command, CommandContext
 from accounting.commands.region_entry import RegionEntryCommand
-from accounting.session_manager import CommandResult, UndoSnapshot
+from accounting.money import cell_number, format_amount
+from accounting.session_manager import CommandResult
+from accounting.undo import CellStep
 from config.log import log_error, log_warning
+from sheets.sheets_client import FORMULA
 
 if TYPE_CHECKING:
     from accounting.commands.employee_commands import NominaCommand
@@ -37,18 +40,18 @@ class WithdrawalCommand(RegionEntryCommand):
         return self.missing_args_message if len(args) < 2 else None
 
     def build_row(self, args: list[str]) -> list:
-        amount = self.parse_amount(args[0])
+        amount = cell_number(self.parse_amount(args[0]))
         description = " ".join(args[1:])
         # La región de retiros usa las columnas C:E con la D vacía.
         return [description, "", amount]
 
     def execute(self, ctx: CommandContext, args: list[str]) -> CommandResult:
         # 1. Registrar el retiro en la planilla (comportamiento normal).
-        result = super().execute(ctx, args)
-        if result.startswith("⚠️"):
-            return result
+        ok, message = self.record(ctx, args)
+        if not ok:
+            return message
 
-        messages = [result]
+        messages = [message]
 
         # 2. Si la descripción es "nomina <nombre>", cerrar el período del
         #    trabajador en su archivo individual.
@@ -79,7 +82,7 @@ class InvestmentCommand(RegionEntryCommand):
     """`inversion <monto> <descripción>`: inversiones en el negocio."""
 
     name = "inversion"
-    aliases = ("inversiones", "inv")
+    aliases = ("inversiones", "inversión", "inv")
     region_attr = "investment_region"
     success_label = "Inversión registrada"
     missing_args_message = "⚠️ Debes proporcionar el monto y la descripción de la inversión."
@@ -89,7 +92,7 @@ class InvestmentCommand(RegionEntryCommand):
         return self.missing_args_message if len(args) < 2 else None
 
     def build_row(self, args: list[str]) -> list:
-        amount = self.parse_amount(args[0])
+        amount = cell_number(self.parse_amount(args[0]))
         description = " ".join(args[1:])
         return [description, amount]
 
@@ -101,7 +104,6 @@ class FixedCellCommand(Command):
     success_label: ClassVar[str]
     missing_args_message: ClassVar[str]
     invalid_amount_message: ClassVar[str]
-    empty_value: ClassVar[object] = ""
 
     @abstractmethod
     def parse_value(self, args: list[str]):
@@ -127,37 +129,28 @@ class FixedCellCommand(Command):
         sheet_id = ctx.session.active_sheet_id
         cell = getattr(ctx.sheets.layout, self.cell_attr)
 
-        previous_value = ctx.sheets.get_value(sheet_id, cell)
-        try:
-            ok = ctx.sheets.set_values(sheet_id, {cell: [[value]]})
-        except Exception as error:
-            log_error(
-                f"comando '{self.name}' falló escribiendo celda (excepción)",
-                error,
-                f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
-                f"sheet_id={sheet_id} sheet_name={ctx.session.active_sheet_name!r} "
-                f"cell={cell} value={value!r} previous={previous_value!r} args={args}",
-            )
-            return "⚠️ No se pudo registrar el valor en la planilla."
+        with ctx.sheets.lock(sheet_id):
+            # Render FORMULA: si la celda tenía una fórmula, deshacer la
+            # restaura como fórmula y no como su resultado.
+            previous_values = ctx.sheets.get_values(sheet_id, [cell], FORMULA)
+            ok = previous_values is not None and ctx.sheets.set_values(sheet_id, {cell: [[value]]})
         if not ok:
             log_warning(
                 f"comando '{self.name}' no pudo escribir la celda",
                 f"business_id={ctx.business.id} phone={ctx.session.phone_number} "
                 f"sheet_id={sheet_id} sheet_name={ctx.session.active_sheet_name!r} "
-                f"cell={cell} value={value!r} previous={previous_value!r} args={args} "
+                f"cell={cell} value={value!r} args={args} "
                 f"-> ver log previo de SheetsClient para la causa raíz",
             )
             return "⚠️ No se pudo registrar el valor en la planilla."
 
-        ctx.session.undo_snapshot = UndoSnapshot.single(
+        rows = previous_values.get(cell, [])
+        previous_value = rows[0][0] if rows and rows[0] else ""
+        ctx.undo.record(
+            [CellStep(sheet_id=sheet_id, cell=cell, written_value=value, restore_value=previous_value)],
             description=" ".join([self.name, *args]),
-            sheet_id=sheet_id,
-            cell=cell,
-            restore_value=(
-                previous_value if previous_value is not None else self.empty_value
-            ),
         )
-        return f"{self.success_label}: {value}"
+        return f"{self.success_label}: {format_amount(value)}"
 
 
 class BalanceCommand(FixedCellCommand):
@@ -171,7 +164,7 @@ class BalanceCommand(FixedCellCommand):
     invalid_amount_message = "⚠️ El monto del saldo debe ser un número válido."
 
     def parse_value(self, args: list[str]):
-        return self.parse_amount(args[0])
+        return cell_number(self.parse_amount(args[0]))
 
 
 class CashCommand(FixedCellCommand):
@@ -183,7 +176,6 @@ class CashCommand(FixedCellCommand):
     success_label = "Efectivo registrado"
     missing_args_message = "⚠️ Debes proporcionar el monto del efectivo."
     invalid_amount_message = "⚠️ El monto del efectivo debe ser un número válido."
-    empty_value = 0
 
     def parse_value(self, args: list[str]):
-        return self.parse_amount(args[0])
+        return cell_number(self.parse_amount(args[0]))

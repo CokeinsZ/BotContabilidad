@@ -1,5 +1,6 @@
 """Comandos de gastos: insumos, limpieza y alimentación."""
 from accounting.commands.region_entry import RegionEntryCommand
+from accounting.money import cell_number
 
 
 class ExpenseCommand(RegionEntryCommand):
@@ -16,7 +17,7 @@ class ExpenseCommand(RegionEntryCommand):
         return self.missing_args_message if len(args) < 2 else None
 
     def build_row(self, args: list[str]) -> list:
-        amount = self.parse_amount(args[0])
+        amount = cell_number(self.parse_amount(args[0]))
         description = " ".join(args[1:])
         return [description, amount]
 
@@ -35,14 +36,14 @@ class CleaningExpenseCommand(RegionEntryCommand):
         return self.missing_args_message if len(args) < 1 else None
 
     def build_row(self, args: list[str]) -> list:
-        return [self.parse_amount(args[0])]
+        return [cell_number(self.parse_amount(args[0]))]
 
 
 class FeedingExpenseCommand(RegionEntryCommand):
     """`alimentacion <monto>`: gastos de alimentación del personal."""
 
     name = "alimentacion"
-    aliases = ("alimentaciones", "comida", "a")
+    aliases = ("alimentaciones", "alimentación", "comida", "a")
     region_attr = "feeding_region"
     success_label = "Gasto de alimentación registrado"
     missing_args_message = "⚠️ Debes proporcionar el monto del gasto."
@@ -52,4 +53,4 @@ class FeedingExpenseCommand(RegionEntryCommand):
         return self.missing_args_message if len(args) < 1 else None
 
     def build_row(self, args: list[str]) -> list:
-        return [self.parse_amount(args[0])]
+        return [cell_number(self.parse_amount(args[0]))]

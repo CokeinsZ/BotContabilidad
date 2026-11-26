@@ -11,23 +11,23 @@ def create_whatsapp_router(service: WhatsAppService) -> APIRouter:
 
     @router.post("/messages-upsert")
     async def read_messages(request: Request):
+        """Responde 200 de inmediato; el mensaje se procesa en segundo plano."""
+        body = None
         try:
             body = await request.json()
-            await service.handle_incoming_message(body)
-            return {"status": "received"}
+            return {"status": service.accept(body)}
         except Exception as error:
-            # Dejar rastro en los logs: Evolution reintenta o descarta según
-            # el código, pero sin este print el fallo era invisible.
-            # Se incluye traceback + body parcial para poder reproducir.
+            # Dejar rastro en los logs con el body parcial para poder reproducir.
             try:
-                preview = str(body)[:2000] if "body" in dir() else "<sin body>"
+                preview = str(body)[:2000] if body is not None else "<sin body>"
             except Exception:
                 preview = "<body no serializable>"
-            log_error(
-                "procesando webhook messages-upsert",
-                error,
-                f"body={preview}",
-            )
+            log_error("recibiendo webhook messages-upsert", error, f"body={preview}")
             return {"status": "error", "message": str(error)}
+
+    @router.get("/messages/{message_id}/status")
+    async def message_status(message_id: str):
+        """Estado del procesamiento de un mensaje: processing / done / unknown."""
+        return {"status": service.status(message_id)}
 
     return router
