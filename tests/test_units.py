@@ -105,11 +105,12 @@ def test_parse_commands(content, expected):
 # ----------------------------------------------------------------------
 # Reintentos ante la cuota de Google (429) y errores 5xx
 # ----------------------------------------------------------------------
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 from googleapiclient.errors import HttpError
 
-from google_api import execute
+from google_api import execute, thread_http
 
 
 class FlakyRequest:
@@ -147,3 +148,35 @@ def test_execute_gives_up_after_max_wait():
     with pytest.raises(HttpError):
         execute(request, max_wait=10, sleep=lambda s: None)
     assert request.calls < 50
+
+
+class RecordingRequest:
+    """Petición de google-api-python-client: trae el `http` autorizado del servicio."""
+
+    def __init__(self, credentials):
+        self.http = SimpleNamespace(credentials=credentials)
+        self.used = []
+
+    def execute(self, http=None):
+        self.used.append(http)
+        return {"ok": True}
+
+
+def test_each_thread_gets_its_own_google_connection():
+    # httplib2 no es seguro entre hilos: dos hilos con la misma conexión TLS
+    # tumbaban el proceso (SIGSEGV) cuando la app pedía varias pantallas a la vez.
+    credentials = SimpleNamespace()
+    first, second = (thread_http(RecordingRequest(credentials)) for _ in range(2))
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        other_thread = pool.submit(thread_http, RecordingRequest(credentials)).result()
+
+    assert first is second                      # se reutiliza dentro del hilo
+    assert other_thread is not first            # cada hilo, su conexión
+    assert first.credentials is credentials
+    assert thread_http(RecordingRequest(SimpleNamespace())) is not first   # re-login: conexión nueva
+
+
+def test_execute_runs_the_request_on_the_thread_connection():
+    request = RecordingRequest(SimpleNamespace())
+    assert execute(request) == {"ok": True}
+    assert request.used == [thread_http(request)]

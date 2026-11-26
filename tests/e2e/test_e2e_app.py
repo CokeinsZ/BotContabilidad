@@ -10,6 +10,7 @@ llaman "wilmer app …", "yesid app" y "zoila app" para no coincidir con las
 búsquedas de test_e2e_trabajadores.py (que buscan por "contiene").
 """
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 import httpx
@@ -354,3 +355,19 @@ def test_perfil_renombrar_y_comandos(run: Run, negocio: Negocio, app: AppClient)
     commands = app.ok("GET", "/comandos")
     assert [c["id"] for c in commands][:4] == ["gasto", "efectivo", "saldo", "trabajador"]
     assert next(c for c in commands if c["id"] == "trabajador")["etiqueta"] == "Préstamo"
+
+
+# ----------------------------------------------------------------------
+# Concurrencia
+# ----------------------------------------------------------------------
+def test_lecturas_a_la_vez_no_tumban_el_bot(run: Run, negocio: Negocio, app: AppClient):
+    """Al abrir una pantalla la app pide varias cosas a la vez (el chat: planilla,
+    resumen y estado). Esas lecturas compartían la conexión TLS de Google entre
+    hilos: Drive respondía 404/502 falsos y el bot moría con SIGSEGV."""
+    sheet = app.create("15-03-2025")["planilla"]["id"]
+    paths = ["/planillas/hoy", "/planillas/meses", f"/planillas/{sheet}", f"/planillas/{sheet}/resumen",
+             f"/planillas/{sheet}/estado", "/trabajadores", "/perfil"] * 2
+    for _ in range(3):
+        with ThreadPoolExecutor(max_workers=len(paths)) as pool:
+            responses = list(pool.map(app.get, paths))
+        assert [(r.url.path, r.status_code) for r in responses] == [(f"/app{p}", 200) for p in paths]
