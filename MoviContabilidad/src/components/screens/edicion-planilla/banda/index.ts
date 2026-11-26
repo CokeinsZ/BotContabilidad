@@ -1,0 +1,1 @@
+export { BandaComandos } from './BandaComandos';

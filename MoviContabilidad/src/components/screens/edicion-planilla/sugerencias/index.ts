@@ -1,0 +1,1 @@
+export { SugerenciasTrabajador } from './SugerenciasTrabajador';

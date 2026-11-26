@@ -10,16 +10,51 @@
 
 - **Decidido:** todo lo de este documento, incluidas las recomendaciones de §15, con un cambio: **el historial del
   chat se guarda en el SQLite local de cada teléfono (`expo-sqlite`), nunca en el servidor** (ver §2.8 y §7.1).
-- **Backend implementado, sin commit** (rama `general-fixes`): todo §2. Módulo `src/mobile/`, tablas
-  `app_pairings` y `app_sessions`, sesión por canal, vinculación por WhatsApp, y endpoints de perfil, comandos,
-  planillas, chat y trabajadores. También README, `.env.example`, `docker-compose.yml` y `dev/app_login.py`.
-- **Verificado:** `uv run pytest` → 146 pruebas pasan (80 que ya existían + 66 nuevas en
-  `tests/test_mobile_units.py` y `tests/test_mobile_api.py`). E2E en el entorno local
-  (`docker-compose.local.yml`, Google Drive/Sheets y DeepSeek reales): `uv run pytest --e2e` → **46 pasan**
-  (34 que ya existían + 12 nuevas en `tests/e2e/test_e2e_app.py`), en 14 minutos, el 2026-11-25.
-- **Falta en el backend:** configurar `APP_JWT_SECRET` y `BOT_WHATSAPP_NUMBER` en el servidor y exponer
-  `/app/*` en el proxy.
-- **Siguiente:** la app (fase 0 de §14).
+- **Backend:** todo §2, en el commit `b717c01` (PR #5). Después, en la rama `feature/app-movil`, una corrección:
+  `src/google_api.py` usa **una conexión HTTP por hilo** para Google. Antes todas las peticiones compartían un solo
+  `httplib2.Http`, que no es seguro entre hilos. Cuando la app pedía varias pantallas a la vez, OpenSSL mezclaba
+  los datos (`SSLError: RECORD_LAYER_FAILURE`, falsos 404/502) y el bot moría con SIGSEGV. Con WhatsApp solo podía
+  pasar con dos administradores escribiendo al mismo tiempo.
+- **App:** implementada en `feature/app-movil`, sin commit: fases 0 y 2 a 6 de §14, salvo `eas.json` y las builds.
+  Todas las pantallas de §10 y el chat completo de §12. Las diferencias con este plan están en la tabla siguiente.
+- **Verificado:**
+  - Backend: `uv run pytest` → **148 pasan**. E2E con Google Drive/Sheets y DeepSeek reales
+    (`uv run pytest --e2e`) → **47 pasan** (13 de la app, entre ellas lecturas concurrentes), 14 min.
+  - App: `npx tsc --noEmit` y `npx expo lint` limpios; `npx jest` → 19 suites, **65 pruebas**; `expo-doctor` 20/20;
+    `expo export` para Android e iOS empaqueta.
+  - En el emulador de Android (Expo Go) contra el bot local: vincular (mensaje por el webhook simulado), Principal, crear y abrir
+    planillas con el calendario, chat (gasto, reintento sin duplicar, "Libre" con DeepSeek, préstamo con sugerencia
+    de trabajador, deshacer con confirmación), Resumen, Planillas (acordeón, toque simple, doble toque abre la app
+    de Sheets), Trabajadores y detalle, Mi perfil y edición, Ayuda.
+- **Falta:**
+  - Servidor: configurar `APP_JWT_SECRET` y `BOT_WHATSAPP_NUMBER` y exponer `/app/*` en el proxy.
+  - App: `eas.json`, ícono y splash definitivos, builds de preview, y probar en un iPhone real (el esquema
+    `googlesheets://` y el teclado en iOS no se han visto funcionando).
+
+### Diferencias entre este plan y lo implementado
+
+| Plan | Implementado | Por qué |
+|---|---|---|
+| `react-native-keyboard-controller` + `KeyboardStickyFooter` | `KeyboardAvoider` (`ui/keyboard`): `KeyboardAvoidingView` de React Native con `behavior="padding"` y **sin** `keyboardVerticalOffset` | No viene en Expo Go. El encabezado de la app (`header` de JS) y el contenido son hermanos en un contenedor que empieza arriba de la ventana: sumar el alto del encabezado dejaba un hueco de ~110 dp sobre el teclado |
+| `react-native-gesture-handler` en `TapArea` | `Pressable` + temporizador (`APP.doubleTapDelayMs` = 260 ms) | Toque, doble toque y mantener presionado sin dependencia nativa extra; probado en `TapArea.test.tsx` |
+| `@react-native-async-storage/async-storage` | `expo-sqlite/kv-store` (`src/storage/preferences/`) | `expo-sqlite` ya estaba; una dependencia menos |
+| Refresh token **y perfil** en `expo-secure-store` | Solo el refresh token en el llavero; el perfil en caché, en `expo-sqlite/kv-store` | Algunas versiones de iOS rechazan valores de más de ~2 KB en el llavero, y el perfil crece con los administradores; si fallaba, fallaba la vinculación |
+| `fetch` solo en `api/client/http.ts` | Solo en `api/client/transport.ts`; `http.ts` arma la petición, refresca y reintenta | Separar el transporte (timeout, abort, errores de red) de la lógica de sesión |
+| `app/index.tsx` + `EntryRedirect` y `/principal` | Principal es `app/(app)/index.tsx` (`/`); `Stack.Protected` usa `redirectTo` | SDK 58 redirige solo cuando el guard es falso; no hace falta una ruta de entrada |
+| `GestureHandlerRootView` y `KeyboardProvider` en `AppProviders` | `SafeAreaProvider` › `StatusBar` › `QueryProvider` › `AlertProvider` › `ToastProvider` › `SessionProvider` › `SplashGate` | Sin esas dos librerías. `SessionProvider` va dentro de `AlertProvider` porque avisa cuando la sesión vence |
+| `authScreens.ts`, `useTecladoVisible`, `useSondeo`, `useValorDiferido`, `useRefrescarAlEnfocar` | `stackOptions.tsx`; `useKeyboardVisible` (en `ui/keyboard`); sondeo con `refetchInterval` de React Query; foco de la app con `focusManager` | Menos código propio donde React Query ya lo resuelve |
+| `useActualizarNegocio` + `useActualizarAdministrador`; `useResponderSeleccion` + `useCancelarSeleccion` | `useActualizarPerfil` y `useSeleccion` (un hook por recurso) | Eran casi iguales |
+| Editar negocio y Editar administrador con su propio formulario | Ambas pantallas pasan solo textos a `domain/perfil/FormularioNombre` (pantalla completa, "Guardar" inactivo si el nombre no cambió) | Eran casi idénticas |
+| `GoldAccentBar`; `Row`, `Column` y `Spacer` en archivos separados | No existe `GoldAccentBar`; `Row`, `Column` y `Spacer` están juntos en `layout/Stacks.tsx` | No hizo falta; son tres envoltorios de pocas líneas |
+| — | `src/storage/startup.ts` (abre la base, migra, marca `enviando` → `fallido`, limpia > 90 días) y `src/test-utils/TestProviders.tsx` | Arranque del almacenamiento antes de ocultar el splash; proveedores para pruebas |
+| `jest.config.js` | Configuración de Jest en `package.json` con `moduleNameMapper` para el build CJS de `lucide-react-native` | La versión ESM no corre en Jest |
+
+Detalles de Android encontrados en el emulador (ya corregidos):
+
+- Una vista sin fondo ni borde se "aplana" en Fabric. Si después recibe fondo, pierde `borderRadius`: el día
+  elegido del calendario salía cuadrado. Por eso `dayCircle` tiene fondo blanco desde el inicio.
+- La `FlatList` `inverted` usa `scale: -1` en Android, que también voltea izquierda y derecha: el `paddingLeft` del
+  contenedor aparecía a la derecha. El padding horizontal del chat va en cada fila.
 
 ## Índice
 
@@ -461,8 +496,8 @@ La base existente (`MoviContabilidad/package.json`) es Expo SDK 58, React Native
 | `expo-sqlite` | **Historial del chat en el teléfono** (nunca en el servidor) |
 | `@tanstack/react-query` | Caché, recarga al volver a la pantalla, estados de carga/error. Evita repetir en cada pantalla el patrón `useFocusEffect + AbortController + useState` que ZoneUp escribe a mano |
 | `react-hook-form` | Formularios (como ZoneUp) |
-| `react-native-gesture-handler` | Distinguir toque simple de doble toque en las planillas |
-| `react-native-keyboard-controller` | Banda de comandos pegada al teclado en el chat |
+| ~~`react-native-gesture-handler`~~ | No se usó: `TapArea` distingue toque y doble toque con un temporizador |
+| ~~`react-native-keyboard-controller`~~ | No se usó (no viene en Expo Go): `KeyboardAvoidingView` de React Native |
 | `react-native-reanimated` (ya está) | Acordeones, aparición del composer, chips |
 | `lucide-react-native` + `react-native-svg` | Íconos de trazo uniforme |
 | `expo-font` + `@expo-google-fonts/inter` + `@expo-google-fonts/playfair-display` | Tipografía |
@@ -470,7 +505,7 @@ La base existente (`MoviContabilidad/package.json`) es Expo SDK 58, React Native
 | `expo-clipboard` | Copiar mensaje / enlace |
 | `expo-haptics` | Vibración corta al enviar y al elegir un comando |
 | `expo-device` | Nombre del dispositivo para la vinculación ("iPhone de Stiven") |
-| `@react-native-async-storage/async-storage` | Preferencias pequeñas (p. ej. "ya vi la pista del doble toque") |
+| `expo-sqlite/kv-store` (en lugar de async-storage) | Preferencias pequeñas (p. ej. "ya vi la pista del doble toque") |
 | dev: `jest-expo`, `@testing-library/react-native` | Pruebas |
 
 Se quitan de la plantilla: `expo-symbols` (se usa lucide), `expo-web-browser` (no se necesita), y `react-dom` /
@@ -482,7 +517,7 @@ Se quitan de la plantilla: `expo-symbols` (se usa lucide), `expo-web-browser` (n
 | ZoneUp hace | Aquí |
 |---|---|
 | `SessionProvider` + `useSession()` + `Stack.Protected` en el layout raíz + grupo `(auth)` | **Igual**, más: sesión persistente (ZoneUp pierde el token al cerrar la app), restauración al abrir, refresco automático ante 401 y estado `restaurando` que mantiene el splash |
-| `src/api/client.ts` es el único `fetch`; un archivo por recurso; `toUser()` convierte respuestas | **Igual**, separado en carpetas: `client/`, `endpoints/`, `dto/`, `entities/`, `mappers/`. Y una regla de ESLint que prohíbe `fetch` fuera de `src/api/client/http.ts` |
+| `src/api/client.ts` es el único `fetch`; un archivo por recurso; `toUser()` convierte respuestas | **Igual**, separado en carpetas: `client/`, `endpoints/`, `dto/`, `entities/`, `mappers/`. Y una regla de ESLint que prohíbe `fetch` fuera de `src/api/client/transport.ts` |
 | Archivos de `app/` que solo llaman a un componente | **Más limpio**: re-exportan el componente en una línea (`export { default } from …`) |
 | Layouts con la lista de `Stack.Screen` y títulos | Los títulos y opciones viven en `src/navigation/`; el layout solo los recorre |
 | Hooks por pantalla en `src/hooks/<área>/` | **Igual** (`hooks/screens/`), más hooks de datos compartidos (`hooks/data/`) |
@@ -506,7 +541,7 @@ app/  (solo enrutamiento)
 
 Reglas (se hacen cumplir con `no-restricted-imports` / `no-restricted-globals` en ESLint):
 
-1. `fetch` solo existe en `src/api/client/http.ts`.
+1. `fetch` solo existe en `src/api/client/transport.ts` (lo usa `http.ts`).
 2. `components/ui/` no importa de `api/`, `session/`, `hooks/` ni `domain/`. Es reutilizable en cualquier proyecto.
 3. `components/domain/` solo importa **tipos** de `api/entities`.
 4. `app/` solo re-exporta pantallas o layouts. Nada de hooks, estilos ni condiciones.
@@ -531,18 +566,20 @@ Reglas (se hacen cumplir con `no-restricted-imports` / `no-restricted-globals` e
 Convención: **todo componente con estilos tiene `Nombre.styles.ts` al lado** y toda carpeta de componentes tiene
 `index.ts`. En el árbol se muestran explícitamente en `ui/` y se omiten en el resto para no repetir.
 
+> Este es el árbol del plan. Lo implementado lo sigue con las diferencias de la tabla del inicio
+> ("Diferencias entre este plan y lo implementado").
+
 ```
 MoviContabilidad/
 ├── app/                                        # SOLO enrutamiento (expo-router)
 │   ├── _layout.tsx                             # <AppProviders><RootStack/></AppProviders>
-│   ├── index.tsx                               # → EntryRedirect (decide /principal o /vincular)
 │   ├── +not-found.tsx                          # → NoEncontradaScreen
 │   ├── (auth)/
 │   │   ├── _layout.tsx                         # Stack sin encabezado
 │   │   └── vincular.tsx                        # → VincularScreen
 │   └── (app)/
 │       ├── _layout.tsx                         # Stack con AppHeader; recorre appScreens
-│       ├── principal.tsx                       # → PrincipalScreen
+│       ├── index.tsx                           # → PrincipalScreen (ruta "/")
 │       ├── ayuda.tsx                           # → AyudaScreen
 │       ├── planillas/
 │       │   ├── index.tsx                       # → PlanillasScreen
@@ -625,7 +662,7 @@ MoviContabilidad/
 │   │   ├── index.ts
 │   │   ├── SessionProvider.tsx                 # estado: restaurando | sinSesion | conSesion
 │   │   ├── useSession.ts
-│   │   ├── session.storage.ts                  # expo-secure-store: refresh token + perfil en caché
+│   │   ├── session.storage.ts                  # refresh token en expo-secure-store; perfil en caché en expo-sqlite/kv-store
 │   │   └── session.types.ts
 │   │
 │   ├── providers/
@@ -636,11 +673,9 @@ MoviContabilidad/
 │   │
 │   ├── navigation/
 │   │   ├── index.ts
-│   │   ├── RootStack.tsx                       # Stack raíz con Stack.Protected por estado de sesión
-│   │   ├── EntryRedirect.tsx                   # <Redirect> según sesión
-│   │   ├── stackOptions.ts                     # header (AppHeader), animación, fondo blanco
+│   │   ├── RootStack.tsx                       # Stack raíz con Stack.Protected (guard + redirectTo)
+│   │   ├── stackOptions.tsx                    # header (AppHeader), animación, fondo blanco
 │   │   ├── appScreens.ts                       # ruta → título/opciones del grupo (app)
-│   │   ├── authScreens.ts                      # ruta → opciones del grupo (auth)
 │   │   └── routes.ts                           # constructores de Href tipados: routes.planilla(id), …
 │   │
 │   ├── theme/
@@ -835,11 +870,12 @@ MoviContabilidad/
 │       │   │   ├── iconRegistry.ts             # nombre semántico → componente de lucide
 │       │   │   └── index.ts
 │       │   ├── gestures/
-│       │   │   ├── TapArea.tsx                 # onPress / onDoubleTap / onLongPress (exclusivos, RNGH)
+│       │   │   ├── TapArea.tsx                 # onPress / onDoubleTap / onLongPress (exclusivos, Pressable + temporizador)
 │       │   │   └── index.ts
 │       │   └── keyboard/
 │       │       ├── DismissKeyboardArea.tsx     # tocar aquí oculta el teclado
-│       │       ├── KeyboardStickyFooter.tsx    # contenido pegado encima del teclado
+│       │       ├── KeyboardAvoider.tsx         # KeyboardAvoidingView (padding, sin offset: ver §12.1)
+│       │       ├── useKeyboardVisible.ts
 │       │       └── index.ts
 │       │
 │       ├── navigation/
@@ -1002,7 +1038,7 @@ Se borran de la plantilla actual: `app/(tabs)/`, `app/modal.tsx`, `app/+html.tsx
 | Ruta | Pantalla | Parámetros |
 |---|---|---|
 | `/vincular` | Vincular | — |
-| `/principal` | Principal | — |
+| `/` | Principal | — |
 | `/planillas` | Planillas | — |
 | `/planillas/nueva` | Nueva planilla | `fecha?` (dd-mm-aaaa), `hoja?` (`1`, `2`, … o `siguiente`) |
 | `/planillas/[planillaId]` | Edición | `comando?`, `texto?` (para abrir con un comando preseleccionado) |
@@ -1020,7 +1056,8 @@ Nunca se escriben rutas a mano en los componentes: se usa `src/navigation/routes
 ```ts
 // src/navigation/routes.ts
 export const routes = {
-  principal: '/principal',
+  principal: '/',
+  vincular: '/vincular',
   planillas: '/planillas',
   nuevaPlanilla: (p?: { fecha?: string; hoja?: number | 'siguiente' }) =>
     ({ pathname: '/planillas/nueva', params: p ?? {} }) as const,
@@ -1094,13 +1131,13 @@ Lo que el layout no hace, lo hacen estos archivos de `src/`:
 // src/navigation/RootStack.tsx  (idea de ZoneUp: las rutas privadas no existen sin sesión)
 export function RootStack() {
   const { estado } = useSession();
+  const conSesion = estado === 'conSesion';
   return (
     <Stack screenOptions={rootStackOptions}>
-      <Stack.Screen name="index" />
-      <Stack.Protected guard={estado === 'conSesion'}>
+      <Stack.Protected guard={conSesion} redirectTo={routes.vincular}>
         <Stack.Screen name="(app)" />
       </Stack.Protected>
-      <Stack.Protected guard={estado === 'sinSesion'}>
+      <Stack.Protected guard={!conSesion} redirectTo={routes.principal}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
     </Stack>
@@ -1108,10 +1145,12 @@ export function RootStack() {
 }
 ```
 
+Mientras la sesión se restaura (`restaurando`), `SplashGate` mantiene el splash, así que no se ve la vinculación.
+
 ```ts
 // src/navigation/appScreens.ts
 export const appScreens = [
-  { name: 'principal', options: { headerShown: false } },
+  { name: 'index', options: { headerShown: false } },   // Principal
   { name: 'planillas/index', options: { title: 'Planillas' } },
   { name: 'planillas/nueva', options: { title: 'Nueva planilla' } },
   { name: 'planillas/[planillaId]/index', options: { title: 'Planilla' } },   // el título real lo pone la pantalla
@@ -1128,15 +1167,14 @@ export const appScreens = [
 
 ```tsx
 // src/providers/AppProviders.tsx — orden de afuera hacia adentro
-<GestureHandlerRootView>          // gestos (doble toque)
-  <SafeAreaProvider>
-    <KeyboardProvider>            // react-native-keyboard-controller
-      <QueryProvider>             // React Query
-        <SessionProvider>         // necesita QueryClient para limpiar caché al salir
-          <AlertProvider>
-            <ToastProvider>
-              <SplashGate>        // fuentes + sesión restaurada → oculta el splash
-                {children}
+<SafeAreaProvider>
+  <StatusBar style="dark" />
+  <QueryProvider>                 // React Query
+    <AlertProvider>
+      <ToastProvider>
+        <SessionProvider>         // usa QueryClient (limpiar al salir) y alertas (sesión vencida)
+          <SplashGate>            // fuentes + sesión restaurada + SQLite listo → oculta el splash
+            {children}
 ```
 
 Reglas de navegación:
@@ -1179,7 +1217,7 @@ export interface Session {
 ## 7. Capa de datos
 
 ```ts
-// src/api/client/http.ts  (único fetch)
+// src/api/client/http.ts  (sesión y reintento; el único fetch está en transport.ts)
 export async function request<T>(path: string, init?: {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
@@ -1739,8 +1777,15 @@ cualquier petición ─▶ 401 ─▶ refresh ─▶ 401 ─▶ sinSesion ─▶
 └───────────────────────────────┘
 ```
 
-Composer y banda van juntos dentro de `KeyboardStickyFooter`: la banda queda siempre justo encima del teclado y, sin
-teclado, encima del área segura inferior.
+Composer y banda van juntos al pie de un `KeyboardAvoider` (`KeyboardAvoidingView` de React Native,
+`behavior="padding"` en las dos plataformas): la banda queda siempre justo encima del teclado y, sin teclado, encima
+del área segura inferior. **Sin `keyboardVerticalOffset`:** con el encabezado de JS (`AppHeader`), el encabezado y la
+pantalla son hermanos en un contenedor que empieza arriba de la ventana. La posición de la pantalla ya incluye el
+encabezado; sumarlo otra vez dejaba un hueco de su alto (~110 dp en Android) entre la banda y el teclado.
+
+La lista es una `FlatList` `inverted`. En Android eso es `scale: -1`, que también cambia izquierda por derecha, así
+que el padding horizontal va en cada fila (`styles.row`) y no en el contenedor. Si no, las burbujas del bot quedan
+pegadas al margen dorado.
 
 ### 12.2 Estados del composer (`composer.reducer.ts`)
 
@@ -1793,17 +1838,20 @@ Eventos y reglas:
 |---|---|
 | `tests/test_mobile_units.py` ✅ | Parser estricto (monto al inicio/final, "5.000", "$1.200.000", "5 mil" → DeepSeek); tipo de cada respuesta del bot; tokens (vencido, mal firmado, de otro secreto); todo comando del catálogo existe en el dispatcher; límite por IP; caché con vencimiento |
 | `tests/test_mobile_api.py` ✅ | Vinculación (entrega única, código errado o vencido, número no registrado); refresh rota y el viejo deja de servir; logout y "cerrar app" cortan el acceso al instante; administrador desactivado → 401; sin token → 401; API apagada sin secreto → 503; perfil y nombres; catálogo con alias; crear hojas en orden y listar meses/mes; crear planilla no cancela la pregunta del chat; tarjeta de hoy; uso de secciones; planilla y trabajador de otro negocio → 404; Google desconectado → 503; lectura directa sin DeepSeek; respaldo a DeepSeek y chip "Libre"; `client_id` repetido no duplica; `hoja` desde el chat se rechaza; pregunta como botones, responder y cancelar; **canal separado** de WhatsApp; dos administradores en la misma planilla; trabajadores y nómina archivada; WhatsApp responde `VINCULAR` sin DeepSeek ni contabilidad |
-| `tests/e2e/test_e2e_app.py` ✅ | 12 pruebas contra el bot local con Google y DeepSeek reales: vinculación por el webhook, sesiones, planillas, chat con y sin DeepSeek, reintento, canales separados, pregunta de trabajadores, nómina archivada, pertenencia y nombres (detalle en `tests/e2e/README.md`) |
+| `tests/e2e/test_e2e_app.py` ✅ | 13 pruebas contra el bot local con Google y DeepSeek reales: vinculación por el webhook, sesiones, planillas, chat con y sin DeepSeek, reintento, canales separados, pregunta de trabajadores, nómina archivada, pertenencia, nombres y **lecturas concurrentes** (14 a la vez, tres rondas; antes tumbaban el bot) (detalle en `tests/e2e/README.md`) |
+| `tests/test_units.py` ✅ | Además: cada hilo usa su propia conexión con Google (`google_api.thread_http`) y `execute` la usa |
 
 ### 13.2 App (jest-expo + Testing Library)
 
-- `utils/`: fechas (máscara, validación, matriz del calendario, nombre de carpeta), montos, normalización,
-  disponibilidad de hojas.
-- `composer.reducer.test.ts`: todas las transiciones de §12.2.
-- `api/mappers/*.test.ts`: DTO → entidad.
-- `api/client/refresh.test.ts`: varios 401 simultáneos → un solo refresh.
+Implementado (19 suites, 65 pruebas, todas colocadas junto al archivo que prueban):
+
+- `utils/`: fechas (máscara, validación, aritmética de días y meses, matriz del calendario, fecha relativa), montos,
+  normalización, iniciales, limpieza de nombres, disponibilidad de hojas y sugerencias de trabajador.
+- `composer.reducer.test.ts`: transiciones de §12.2.
+- `api/mappers/mappers.test.ts`: DTO → entidad.
+- `api/client/http.test.ts`: varios 401 simultáneos → un solo refresh; refresh rechazado → sesión vencida.
 - Componentes: `Calendar` (texto ⇄ día), `Dropdown` (opciones deshabilitadas), `BandaComandos` + `Composer` (prefijo),
-  `TapArea` (simple vs doble).
+  `TapArea` (simple vs doble), `TextoConComando` (sin texto no lleva dos puntos).
 - Antes de cerrar cada fase: `npx tsc --noEmit`, `npx expo lint` y `npx jest`.
 
 ---
@@ -1812,13 +1860,13 @@ Eventos y reglas:
 
 | Fase | Alcance | Listo cuando |
 |---|---|---|
-| **0. Preparación de la app** | Borrar la plantilla de tabs; alias `@/*`; dependencias; `theme/`; fuentes; ESLint con reglas de capas; providers; navegación con pantallas vacías | `tsc`, lint y la app navega entre pantallas vacías con encabezado y colores finales |
-| **1. Backend completo** ✅ | Todo §2: tablas, settings, tokens, vinculación por WhatsApp, canal en `SessionManager`, perfil, comandos, planillas, chat y trabajadores | Hecho: 146 pruebas pasan. Falta configurar el servidor y la prueba E2E |
-| **2. App: sesión** | `api/client`, `session/`, Vincular, restauración, refresco, Principal (encabezado + grilla), Perfil de solo lectura | Cerrar y abrir la app mantiene la sesión; logout revoca; administrador desactivado sale solo |
-| **3. Planillas** | App: Planillas (acordeón, gestos, hoja de acciones), Nueva planilla (calendario, selector de hoja), TarjetaHoy | Se crean Hoja 1/2/3 respetando el orden; doble toque abre Sheets en iOS y Android |
-| **4. Edición (chat)** | App: `src/storage/` (historial local, §7.1) y chat completo de §12 | Todos los comandos de la banda funcionan; menú de trabajadores con botones; deshacer; reintento sin duplicados |
-| **5. Trabajadores** | App: 3 pantallas + "Registrar préstamo / Pagar nómina" | Los vales y totales coinciden con el archivo en Sheets |
-| **6. Pulido y entrega** | Resumen, Ayuda, edición de perfil, estados vacíos/errores/skeletons, accesibilidad (lectores de pantalla, tamaño de letra), haptics, ícono y splash, `eas.json`, builds | Pruebas verdes; build de preview instalada en Android e iOS |
+| **0. Preparación de la app** ✅ | Borrar la plantilla de tabs; alias `@/*`; dependencias; `theme/`; fuentes; ESLint con reglas de capas; providers; navegación con pantallas vacías | Hecho |
+| **1. Backend completo** ✅ | Todo §2: tablas, settings, tokens, vinculación por WhatsApp, canal en `SessionManager`, perfil, comandos, planillas, chat y trabajadores | Hecho (148 pruebas y 47 E2E). Falta configurar el servidor |
+| **2. App: sesión** ✅ | `api/client`, `session/`, Vincular, restauración, refresco, Principal (encabezado + grilla), Perfil de solo lectura | Hecho: vinculación por el webhook de WhatsApp (simulado en local) y restauración al reabrir, vistas en el emulador |
+| **3. Planillas** ✅ | App: Planillas (acordeón, gestos, hoja de acciones), Nueva planilla (calendario, selector de hoja), TarjetaHoy | Hecho en Android. Falta ver el doble toque en iOS |
+| **4. Edición (chat)** ✅ | App: `src/storage/` (historial local, §7.1) y chat completo de §12 | Hecho: gasto, "Libre", préstamo con sugerencia, deshacer y reintento vistos en el emulador |
+| **5. Trabajadores** ✅ | App: 3 pantallas + "Registrar préstamo / Pagar nómina" | Hecho: lista y detalle con datos reales de Sheets |
+| **6. Pulido y entrega** (parcial) | Resumen, Ayuda, edición de perfil, estados vacíos/errores/skeletons, accesibilidad (lectores de pantalla, tamaño de letra), haptics, ícono y splash, `eas.json`, builds | Hecho, salvo ícono y splash definitivos, `eas.json` y builds de preview. La accesibilidad está en el código (etiquetas, roles y estados), pero falta probarla con TalkBack/VoiceOver y letra grande |
 | **7. Futuro** | Notas de voz (Whisper ya existe en el backend), dispositivos vinculados, cambio de número con re-vinculación, avisos push ("otro administrador registró…"), cola sin conexión | — |
 
 ---
@@ -1832,7 +1880,7 @@ Eventos y reglas:
 | Hojas en el selector | ✅ **Decidido:** Primera, Segunda, Tercera y aparece la siguiente si ya existen todas | — |
 | Teléfono del administrador | ✅ **Decidido:** solo lectura en v1 | Cambio con re-vinculación (fase 7) |
 | Web | ✅ **Decidido:** no es objetivo | — |
-| Expo Go | Varias librerías (gesture-handler 3, keyboard-controller, intent-launcher) pueden requerir **development build**. Planear `eas build --profile development` desde la fase 0 | — |
+| Expo Go | ✅ **Resuelto:** sin gesture-handler ni keyboard-controller, toda la app corre en Expo Go (`expo-intent-launcher`, `expo-sqlite` y `expo-secure-store` vienen incluidos). La development build solo hará falta si se agrega una librería nativa | — |
 | Cuota de Google | Lecturas perezosas, caché corta en backend y en React Query, nada de leer totales por trabajador en la lista | Pedir aumento de cuota |
 | Latencia del chat | Parser estricto sin DeepSeek para lo que ya viene bien escrito | Siempre DeepSeek (más lento y con costo) |
 | Toque simple con retraso | Inevitable al soportar doble toque (~250 ms). Se compensa con feedback visual inmediato al presionar | Usar solo "mantener presionado" para Sheets |
@@ -1842,14 +1890,15 @@ Eventos y reglas:
 ## 16. Pendiente de verificar en Expo SDK 58
 
 `AGENTS.md` pide leer la documentación de la versión exacta antes de escribir código
-(`https://docs.expo.dev/versions/v58.0.0/`). Verificar antes de implementar:
+(`https://docs.expo.dev/versions/v58.0.0/`). Resultado:
 
-- `Stack.Protected`: a dónde redirige cuando el guard es falso y cómo convive con `app/index.tsx`.
-- `react-native-keyboard-controller`: nombre y API de la vista pegada al teclado (`KeyboardStickyView` o equivalente)
-  y si está en Expo Go.
-- `react-native-gesture-handler` 3.x: API de gestos de toque (cambió respecto a la 2.x) para `TapArea`.
-- `expo-secure-store`: límites de tamaño por valor (el perfil en caché debe caber).
-- `expo-intent-launcher`: abrir `com.google.android.apps.docs.editors.sheets` con la URL de la planilla.
-- iOS: esquema de la app Google Sheets (`googlesheets://`), declararlo en `ios.infoPlist.LSApplicationQueriesSchemes`
-  y probar en un iPhone real; si no abre, usar la URL `https://docs.google.com/...` (enlace universal).
-- `typedRoutes`: que `routes.ts` tipa bien rutas con grupos y parámetros.
+- ✅ `Stack.Protected`: acepta `redirectTo`; con eso no hace falta `app/index.tsx` de entrada.
+- ✅ `react-native-keyboard-controller`: no viene en Expo Go; se usó `KeyboardAvoidingView` (ver §12.1).
+- ✅ `react-native-gesture-handler`: no se usó; `TapArea` con `Pressable` y temporizador.
+- ✅ `expo-secure-store`: Expo no pone límite, pero "algunas versiones de iOS rechazaban valores de más de ~2048
+  bytes" y `setItemAsync` rechaza la promesa. El perfil crece con la lista de administradores, así que va en
+  `expo-sqlite/kv-store` (no es secreto). En el llavero queda solo el refresh token.
+- ✅ `expo-intent-launcher`: el doble toque abre `com.google.android.apps.docs.editors.sheets` en el emulador.
+- ⏳ iOS: esquema `googlesheets://` declarado en `ios.infoPlist.LSApplicationQueriesSchemes`, con respaldo a
+  `https://docs.google.com/...`. **Falta probarlo en un iPhone real.**
+- ✅ `typedRoutes`: `routes.ts` tipa las rutas con grupos y parámetros (`tsc` limpio).
