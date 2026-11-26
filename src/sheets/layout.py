@@ -11,7 +11,23 @@ otra sección o los totales.
 """
 from dataclasses import dataclass
 
-from sheets.a1 import column_number, split_sheet
+from sheets.a1 import cell_at, column_number, parse_cell, split_sheet
+
+#: Regiones de la planilla diaria, en el orden en que se muestran al usuario.
+DAILY_REGION_ATTRS = (
+    "expense_region",
+    "worker_loan_region",
+    "admin_region",
+    "withdraw_region",
+    "investment_region",
+    "cleaning_region",
+    "feeding_region",
+)
+
+
+def sheet_prefix(title: str) -> str:
+    """Prefijo A1 de una hoja: 'principal' -> "'principal'!" (comillas escapadas)."""
+    return "'" + title.replace("'", "''") + "'!"
 
 
 @dataclass(frozen=True)
@@ -58,6 +74,24 @@ class SheetRegion:
 
     def row_range(self, row: int) -> str:
         return self.block_range(row, row)
+
+    def moved(self, sheet_prefix: str, row_offset: int) -> "SheetRegion":
+        """La misma región en otra hoja y desplazada `row_offset` filas hacia arriba.
+
+        Sirve para leer una hoja archivada de nómina: es una copia de
+        "principal" a la que se le borraron las primeras filas.
+        """
+        _, columns = split_sheet(self.target_columns)
+        _, counter = split_sheet(self.counter_cell)
+        column, row = parse_cell(counter)
+        return SheetRegion(
+            label=self.label,
+            counter_cell=cell_at(sheet_prefix, column, row - row_offset),
+            target_columns=f"{sheet_prefix}{columns}",
+            min_row=self.min_row - row_offset,
+            max_row=self.max_row - row_offset,
+            blank=self.blank,
+        )
 
     def block_range(self, first_row: int, last_row: int) -> str:
         prefix, first, last = self._prefix_and_columns
@@ -110,3 +144,14 @@ class PlanillaLayout:
     worker_loan_sum_cell: str = "principal!B30"       # TOTAL = SUM(B13:B29)
     # Filas que se eliminan de la copia archivada al cerrar la nómina.
     worker_archive_deleted_rows: tuple[int, int] = (1, 9)
+
+    @property
+    def daily_regions(self) -> tuple[tuple[str, SheetRegion], ...]:
+        """(nombre del atributo, región) de cada sección de la planilla diaria."""
+        return tuple((attr, getattr(self, attr)) for attr in DAILY_REGION_ATTRS)
+
+    @property
+    def worker_archive_offset(self) -> int:
+        """Cuántas filas subió todo en una hoja archivada de nómina."""
+        first_row, last_row = self.worker_archive_deleted_rows
+        return last_row - first_row + 1

@@ -12,6 +12,7 @@ import threading
 import time
 
 from sheets.a1 import cell_at, column_number, parse_cell, split_sheet
+from sheets.sheets_client import SheetsClient
 
 _REF = re.compile(r"([A-Z]+\d+)(?::([A-Z]+\d+))?")
 
@@ -115,6 +116,18 @@ class FakeSpreadsheet:
         return count
 
 
+class FakeSheetsClient(SheetsClient):
+    """SheetsClient real sobre el servicio falso."""
+
+    def __init__(self, service):
+        super().__init__(auth_manager=None)
+        self._fake_service = service
+
+    @property
+    def service(self):
+        return self._fake_service
+
+
 class FakeSheetsService:
     """Imita `build("sheets", "v4")` lo suficiente para SheetsClient."""
 
@@ -211,15 +224,39 @@ def workers_template() -> dict:
     return {"principal": cells}
 
 
+SHEET_MIME = "application/vnd.google-apps.spreadsheet"
+FOLDER_MIME = "application/vnd.google-apps.folder"
+MONTH_NAMES = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+]
+
+
+def month_folder_of(sheet_name: str) -> str:
+    """'24-11-2026-2' -> 'noviembre-2026'."""
+    day, month, year = sheet_name[:10].split("-")
+    return f"{MONTH_NAMES[int(month) - 1]}-{year}"
+
+
 class FakeDrive:
-    """Imita DriveClient sobre FakeSheetsService."""
+    """Imita DriveClient sobre FakeSheetsService.
+
+    Las planillas viven en carpetas de mes "month:<mes-aaaa>" dentro de
+    `sheets_folder_id`; los trabajadores, en `workers_folder_id`.
+    `foreign` guarda archivos de OTROS negocios (para probar pertenencia).
+    """
 
     service = object()
 
-    def __init__(self, sheets_service: FakeSheetsService):
+    def __init__(self, sheets_service: FakeSheetsService,
+                 sheets_folder_id: str = "folder-planillas",
+                 workers_folder_id: str = "folder-trabajadores"):
         self._sheets = sheets_service
+        self.sheets_folder_id = sheets_folder_id
+        self.workers_folder_id = workers_folder_id
         self.planillas: dict[str, str] = {}          # nombre -> id
         self.workers: list[tuple[str, str]] = []     # (id, nombre)
+        self.foreign: dict[str, dict] = {}           # id -> metadatos de otro negocio
         self._counter = 0
 
     def _new_file(self, template: dict) -> str:
@@ -256,6 +293,39 @@ class FakeDrive:
     def duplicate_workers_template(self, folder_id, name):
         return self.add_worker(name), name
 
+    # --- lo que usa la API de la app ----------------------------------
+    def try_list_files_in_folder(self, folder_id):
+        return list(self.workers)
+
+    def list_month_folders(self, folder_id):
+        months = {month_folder_of(name) for name in self.planillas}
+        result = []
+        for month in months:
+            name, _, year = month.partition("-")
+            result.append((f"month:{month}", month, (int(year), MONTH_NAMES.index(name) + 1)))
+        return result
+
+    def list_planillas_of_month(self, folder_id, year, month):
+        wanted = f"{MONTH_NAMES[month - 1]}-{year}"
+        return [(file_id, name) for name, file_id in self.planillas.items()
+                if month_folder_of(name) == wanted]
+
+    def get_file(self, file_id):
+        if file_id in self.foreign:
+            return self.foreign[file_id]
+        for name, planilla_id in self.planillas.items():
+            if planilla_id == file_id:
+                return {"id": file_id, "name": name, "mimeType": SHEET_MIME, "trashed": False,
+                        "parents": [f"month:{month_folder_of(name)}"]}
+        if file_id.startswith("month:"):
+            return {"id": file_id, "name": file_id[6:], "mimeType": FOLDER_MIME, "trashed": False,
+                    "parents": [self.sheets_folder_id]}
+        for worker_id, name in self.workers:
+            if worker_id == file_id:
+                return {"id": file_id, "name": name, "mimeType": SHEET_MIME, "trashed": False,
+                        "parents": [self.workers_folder_id]}
+        return None
+
 
 def cell_value(service: FakeSheetsService, file_id: str, a1: str):
     return service.files[file_id].raw(a1)
@@ -266,6 +336,10 @@ def col_values(service: FakeSheetsService, file_id: str, a1_range: str, render="
 
 
 __all__ = [
-    "FakeDrive", "FakeSheetsService", "FakeSpreadsheet", "cell_at", "cell_value",
+    "FOLDER_MIME",
+    "SHEET_MIME",
+    "month_folder_of",
+    "FakeDrive",
+    "FakeSheetsClient", "FakeSheetsService", "FakeSpreadsheet", "cell_at", "cell_value",
     "col_values", "column_number", "planilla_template", "workers_template",
 ]

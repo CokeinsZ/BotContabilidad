@@ -2,9 +2,7 @@ import pytest
 
 from accounting import AccountingService, CommandDispatcher, SessionManager, build_default_commands
 from database.models import Administrator, Business, BusinessContext
-from sheets.sheets_client import SheetsClient
-
-from fakes import FakeDrive, FakeSheetsService
+from fakes import FakeDrive, FakeSheetsClient, FakeSheetsService
 
 
 # ----------------------------------------------------------------------
@@ -33,16 +31,6 @@ ADMINS = {
     "999": Administrator(7, 3, "Admin de prueba", "999", "active"),
     "998": Administrator(8, 3, "Otro admin", "998", "active"),
 }
-
-
-class FakeSheetsClient(SheetsClient):
-    def __init__(self, service):
-        super().__init__(auth_manager=None)
-        self._fake_service = service
-
-    @property
-    def service(self):
-        return self._fake_service
 
 
 class FakeRepository:

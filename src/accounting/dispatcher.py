@@ -52,6 +52,16 @@ class CommandDispatcher:
                 "Revisa los logs del servidor para el detalle."
             ]
 
+    def resolve(self, full_command: str) -> Command | None:
+        """Comando que ejecutaría `full_command`, sin ejecutarlo (None si no existe)."""
+        parts = full_command.split()
+        return self._resolve(parts)[0] if parts else None
+
+    @property
+    def commands(self) -> list[Command]:
+        """Comandos registrados (sin repetir los alias)."""
+        return list({id(command): command for command in self._handlers.values()}.values())
+
     def _resolve(self, parts: list[str]) -> tuple[Command | None, list[str]]:
         """Busca primero comandos de dos palabras, luego de una."""
         if len(parts) >= 2:

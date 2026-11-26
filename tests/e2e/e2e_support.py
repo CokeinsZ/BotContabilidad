@@ -96,6 +96,67 @@ class BotUser:
         return self.replies_since(since)
 
 
+class AppClient:
+    """La app móvil de un administrador: se vincula por WhatsApp y usa la API /app."""
+
+    def __init__(self, user: BotUser, session: dict):
+        self.user = user
+        self.access_token = session["access_token"]
+        self.refresh_token = session["refresh_token"]
+        self.profile = session["perfil"]
+
+    @classmethod
+    def pair(cls, user: BotUser, device: str = "E2E") -> "AppClient":
+        """Vinculación completa: pedir código, enviarlo por WhatsApp y recoger la sesión."""
+        start = httpx.post(f"{BOT_URL}/app/auth/vinculaciones", json={"dispositivo": device}, timeout=30)
+        assert start.status_code == 201, start.text
+        pairing = start.json()
+        replies = user.send(pairing["mensaje"])
+        assert replies and replies[0].startswith("✅ App vinculada"), replies
+        poll = httpx.get(f"{BOT_URL}/app/auth/vinculaciones/{pairing['vinculacion_id']}", timeout=30).json()
+        assert poll["estado"] == "confirmada", poll
+        return cls(user, poll["sesion"])
+
+    @property
+    def headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.access_token}"}
+
+    def request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        return httpx.request(method, f"{BOT_URL}/app{path}", headers=self.headers, timeout=300, **kwargs)
+
+    def get(self, path: str, **kwargs) -> httpx.Response:
+        return self.request("GET", path, **kwargs)
+
+    def ok(self, method: str, path: str, **kwargs):
+        """JSON de una petición que debe responder 2xx."""
+        response = self.request(method, path, **kwargs)
+        assert response.is_success, f"{method} {path} -> {response.status_code} {response.text}"
+        return response.json() if response.content else None
+
+    def create(self, fecha: str, hoja: int = 1) -> dict:
+        result = self.ok("POST", "/planillas", json={"fecha": fecha, "hoja": hoja})
+        print(f"\n📱 [{self.user.name}] crear {fecha} hoja {hoja} -> creada={result['creada']}")
+        for message in result["mensajes"]:
+            print(f"🤖 ({message['tipo']}) {message['texto']}")
+        return result
+
+    def send(self, sheet_id: str, texto: str, comando: str | None = None,
+             client_id: str | None = None) -> dict:
+        """Envía un mensaje al chat de la planilla y devuelve el resultado."""
+        client_id = client_id or f"e2e-{uuid.uuid4().hex}"
+        label = f"{comando}: " if comando else ""
+        print(f"\n📱 [{self.user.name}] {label}{texto}")
+        result = self.ok("POST", f"/planillas/{sheet_id}/mensajes",
+                         json={"client_id": client_id, "comando": comando, "texto": texto})
+        for reply in result["respuestas"]:
+            print(f"🤖 ({reply['tipo']}) " + reply["texto"].replace("\n", "\n   "))
+        return result
+
+    @staticmethod
+    def texts(result: dict) -> list[str]:
+        return [reply["texto"] for reply in result["respuestas"]]
+
+
 def last_mock_id() -> int:
     return max((m["id"] for m in httpx.get(f"{MOCK_URL}/messages").json()), default=0)
 

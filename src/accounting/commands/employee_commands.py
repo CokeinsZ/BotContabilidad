@@ -40,9 +40,21 @@ def create_worker_file(ctx: CommandContext, folder_id: str, worker_name: str) ->
     return file_id
 
 
+def menu_prompt(worker_name: str) -> str:
+    return f"Hay varios trabajadores con nombre similar a '{worker_name}'"
+
+
+def menu_labels(worker_name: str, candidates: list[tuple[str, str]], create_option: bool) -> list[str]:
+    """Etiqueta de cada opción del menú, en el orden de sus números (1..n)."""
+    labels = [name for _file_id, name in candidates]
+    if create_option:
+        labels.append(f"Crear nuevo trabajador '{worker_name}'")
+    return labels
+
+
 def build_menu(worker_name: str, candidates: list[tuple[str, str]], footer: str,
                create_option: bool) -> str:
-    lines = [f"⚠️ Hay varios trabajadores con nombre similar a '{worker_name}':\n"]
+    lines = [f"⚠️ {menu_prompt(worker_name)}:\n"]
     for index, (_file_id, name) in enumerate(candidates, start=1):
         lines.append(f"{index}. {name}")
     if create_option:
@@ -52,7 +64,7 @@ def build_menu(worker_name: str, candidates: list[tuple[str, str]], footer: str,
 
 
 def ask_selection(ctx: CommandContext, worker_name: str, menu: str, options: int,
-                  description: str, resolver) -> str:
+                  description: str, resolver, labels: list[str] | None = None) -> str:
     """Encola una pregunta numerada y devuelve lo que hay que mostrar ahora.
 
     Si un mensaje trae varios comandos ambiguos, se pregunta uno a la vez:
@@ -65,6 +77,10 @@ def ask_selection(ctx: CommandContext, worker_name: str, menu: str, options: int
         description=", ".join(descriptions) or description,
         menu=menu, options=options, resolver=resolver,
         cancel_steps=steps, cancel_descriptions=descriptions,
+        prompt=menu_prompt(worker_name),
+        option_labels=list(labels or []),
+        sheet_id=ctx.session.active_sheet_id,
+        sheet_name=ctx.session.active_sheet_name,
     ))
     if shown_now:
         return menu
@@ -190,6 +206,7 @@ class WorkerLoanCommand(Command):
                 options=len(candidates) + 1,
                 description=f"trabajador {amount} {worker_name}",
                 resolver=self._make_selection_resolver(amount, worker_name, sheet_date, candidates),
+                labels=menu_labels(worker_name, candidates, create_option=True),
             )]
 
         if len(candidates) == 1:
@@ -390,6 +407,7 @@ class NominaCommand(Command):
                 options=len(candidates),
                 description=f"nomina {worker_name}",
                 resolver=self._make_selection_resolver(candidates),
+                labels=menu_labels(worker_name, candidates, create_option=False),
             )]
 
         file_id, file_name = candidates[0]

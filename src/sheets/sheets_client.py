@@ -59,6 +59,14 @@ class DailyTotals:
     total_balance: object
 
 
+@dataclass(frozen=True)
+class PlanillaOverview:
+    """Totales de la planilla y el contador de cada sección (atributo del layout -> valor)."""
+
+    totals: DailyTotals
+    counters: dict[str, object]
+
+
 def same_value(left, right) -> bool:
     """Compara valores de celda tolerando 5000 vs 5000.0 y None vs ''."""
     left = "" if left is None else left
@@ -321,25 +329,38 @@ class SheetsClient:
     # ------------------------------------------------------------------
     # Resumen diario
     # ------------------------------------------------------------------
-    def get_daily_totals(self, sheet_id: str) -> DailyTotals | None:
-        """Lee los totales del bloque "MANEJO DEL EFECTIVO" por celda nombrada."""
+    def _totals_cells(self) -> list[str]:
         layout = self.layout
-        cells = [
+        return [
             layout.total_expenses_cell,
             layout.day_cash_cell,
             layout.total_sales_cell,
             layout.generated_cash_cell,
             layout.total_cash_cell,
         ]
-        values = self.get_values(sheet_id, cells)
+
+    def get_daily_totals(self, sheet_id: str) -> DailyTotals | None:
+        """Lee los totales del bloque "MANEJO DEL EFECTIVO" por celda nombrada."""
+        overview = self.get_planilla_overview(sheet_id)
+        return overview.totals if overview is not None else None
+
+    def get_planilla_overview(self, sheet_id: str) -> "PlanillaOverview | None":
+        """Totales y contadores de todas las secciones en UNA sola lectura."""
+        cells = self._totals_cells()
+        regions = self.layout.daily_regions
+        counters = [region.counter_cell for _attr, region in regions]
+        values = self.get_values(sheet_id, cells + counters)
         if values is None:
             return None
 
-        def value_of(cell: str):
+        def value_of(cell: str, default):
             rows = values.get(cell, [])
-            return rows[0][0] if rows and rows[0] else 0
+            return rows[0][0] if rows and rows[0] else default
 
-        return DailyTotals(*(value_of(cell) for cell in cells))
+        return PlanillaOverview(
+            totals=DailyTotals(*(value_of(cell, 0) for cell in cells)),
+            counters={attr: value_of(region.counter_cell, None) for attr, region in regions},
+        )
 
     # ------------------------------------------------------------------
     # Operaciones estructurales de hojas (batchUpdate)

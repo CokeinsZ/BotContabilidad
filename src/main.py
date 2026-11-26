@@ -21,8 +21,9 @@ from accounting import (
 from ai import DeepSeekService, WhisperService
 from auth import GoogleAuthManager, create_auth_router
 from config import Settings, get_settings
-from database import BusinessRepository, Database
+from database import AppRepository, BusinessRepository, Database
 from drive import DriveClient
+from mobile import AppAuthService, TokenService, create_mobile_api, install_mobile_api
 from sheets import SheetsClient
 from whatsapp import WhatsAppService, create_whatsapp_router
 
@@ -65,6 +66,19 @@ class Container:
             drive_client=self.drive_client,
         )
 
+        # Autenticación de la app móvil (vinculación por WhatsApp)
+        self.app_repository = AppRepository(self.database)
+        self.app_auth = AppAuthService(
+            repository=self.app_repository,
+            businesses=self.business_repository,
+            tokens=TokenService(
+                settings.app_jwt_secret,
+                access_minutes=settings.app_access_token_minutes,
+                refresh_days=settings.app_refresh_token_days,
+            ),
+            bot_whatsapp_number=settings.bot_whatsapp_number,
+        )
+
         # Servicios de IA y mensajería
         self.whisper_service = WhisperService(settings.whisper_url)
         self.deepseek_service = DeepSeekService(
@@ -77,6 +91,20 @@ class Container:
             whisper_service=self.whisper_service,
             deepseek_service=self.deepseek_service,
             accounting_service=self.accounting_service,
+            app_auth=self.app_auth,
+        )
+
+        # API de la app móvil (/app)
+        self.mobile_api = create_mobile_api(
+            auth=self.app_auth,
+            accounting=self.accounting_service,
+            dispatcher=self.dispatcher,
+            businesses=self.business_repository,
+            sheets=self.sheets_client,
+            drive=self.drive_client,
+            extract_commands=self.deepseek_service.extract_commands,
+            bot_whatsapp_number=settings.bot_whatsapp_number,
+            pairings_per_ip=settings.app_pairings_per_ip,
         )
 
 
@@ -89,6 +117,16 @@ def create_server() -> FastAPI:
             print(
                 "⚠️ AUTH_ADMIN_PASSWORD no está configurado: /auth/login queda "
                 "deshabilitado hasta que se configure."
+            )
+        if not container.settings.app_jwt_secret:
+            print(
+                "⚠️ APP_JWT_SECRET no está configurado: la API de la app (/app) "
+                "queda deshabilitada hasta que se configure."
+            )
+        if not container.settings.bot_whatsapp_number:
+            print(
+                "⚠️ BOT_WHATSAPP_NUMBER no está configurado: la app no podrá abrir "
+                "WhatsApp con el código de vinculación (el usuario tendrá que escribirlo)."
             )
         if container.auth_manager.is_authenticated():
             print("✅ Credenciales de Google cargadas correctamente.")
@@ -121,7 +159,7 @@ def create_server() -> FastAPI:
             "https://contabilidad.notiasis.com",
         ],
         allow_credentials=True,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
 
@@ -133,6 +171,7 @@ def create_server() -> FastAPI:
         )
     )
     app.include_router(create_whatsapp_router(container.whatsapp_service))
+    install_mobile_api(app, container.mobile_api)
 
     return app
 

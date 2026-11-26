@@ -1,7 +1,13 @@
 """Servicio de aplicación: orquesta la ejecución de comandos del bot."""
 from accounting.commands.base import CommandContext
 from accounting.dispatcher import CommandDispatcher
-from accounting.session_manager import CommandResult, SessionManager
+from accounting.session_manager import (
+    WHATSAPP,
+    CommandResult,
+    SessionManager,
+    SessionState,
+    UserSession,
+)
 from accounting.undo import Outcome
 from config.log import log_error
 from database.business_repository import BusinessRepository
@@ -14,6 +20,20 @@ NO_COMMANDS_MESSAGE = (
     "Escribe 'instrucciones' para ver lo que puedo hacer."
 )
 
+GOOGLE_NOT_AUTHENTICATED_MESSAGE = (
+    "⚠️ El servidor aún no está autenticado con Google. "
+    "Pide al administrador del sistema que abra el enlace /auth/login."
+)
+
+
+def unregistered_message(phone_number: str) -> str:
+    """Respuesta para alguien que no es administrador de ningún negocio."""
+    return (
+        "⚠️ Tu número no está registrado como administrador de ningún "
+        f"negocio.\n\nTu identificador es: {phone_number}\n"
+        "Compártelo con el proveedor del bot para darte de alta."
+    )
+
 
 class AccountingService:
     """Fachada del núcleo de contabilidad.
@@ -22,6 +42,9 @@ class AccountingService:
     resuelve el business correspondiente y los ejecuta en su sesión.
     También gestiona las selecciones pendientes (preguntas abiertas que el
     usuario responde con un número, ej: elegir entre trabajadores similares).
+
+    `channel` separa las sesiones de WhatsApp y de la app móvil (ver
+    `session_manager`). Por defecto es WhatsApp.
     """
 
     def __init__(
@@ -42,7 +65,9 @@ class AccountingService:
         """Atajo para un mensaje con un único comando."""
         return self.handle_commands(phone_number, [full_command])
 
-    def handle_commands(self, phone_number: str, commands: list[str]) -> list[str]:
+    def handle_commands(
+        self, phone_number: str, commands: list[str], channel: str = WHATSAPP
+    ) -> list[str]:
         """Ejecuta, en orden, todos los comandos de UN mensaje.
 
         Todo lo que modifiquen se agrupa en un único deshacer: el siguiente
@@ -50,19 +75,12 @@ class AccountingService:
         """
         business_context = self._businesses.find_context_by_phone(phone_number)
         if business_context is None:
-            return [
-                "⚠️ Tu número no está registrado como administrador de ningún "
-                f"negocio.\n\nTu identificador es: {phone_number}\n"
-                "Compártelo con el proveedor del bot para darte de alta."
-            ]
+            return [unregistered_message(phone_number)]
 
-        if self._sheets.service is None or self._drive.service is None:
-            return [
-                "⚠️ El servidor aún no está autenticado con Google. "
-                "Pide al administrador del sistema que abra el enlace /auth/login."
-            ]
+        if not self.google_connected:
+            return [GOOGLE_NOT_AUTHENTICATED_MESSAGE]
 
-        session = self._sessions.get_or_create(business_context.business.id, phone_number)
+        session = self._sessions.get_or_create(business_context.business.id, phone_number, channel)
         ctx = CommandContext(
             business=business_context.business,
             administrator=business_context.administrator,
@@ -157,13 +175,92 @@ class AccountingService:
             "y se borró de la planilla."
         ]
 
-    def has_pending_selection(self, phone_number: str) -> bool:
+    def has_pending_selection(self, phone_number: str, channel: str = WHATSAPP) -> bool:
         """True si el usuario tiene una selección pendiente por responder."""
+        session = self._session(phone_number, channel)
+        return session is not None and bool(session.pending_selections)
+
+    # ------------------------------------------------------------------
+    # Operaciones para clientes que no son WhatsApp (app móvil)
+    # ------------------------------------------------------------------
+    @property
+    def google_connected(self) -> bool:
+        """True si el servidor tiene credenciales válidas de Google."""
+        return self._sheets.service is not None and self._drive.service is not None
+
+    def select_sheet(self, phone_number: str, channel: str, sheet_id: str, sheet_name: str) -> bool:
+        """Fija la planilla activa sin pasar por el comando 'hoja'.
+
+        La app abre una planilla concreta (ya verificada como del negocio) y
+        todo lo que se escribe en su chat va a esa planilla. Devuelve False si
+        el teléfono no es de un administrador activo.
+        """
+        session = self._session(phone_number, channel)
+        if session is None:
+            return False
+        session.set_active_sheet(sheet_id, sheet_name)
+        return True
+
+    def session_state(self, phone_number: str, channel: str) -> SessionState | None:
+        """Planilla activa, qué revertiría 'deshacer' y la pregunta pendiente."""
+        session = self._session(phone_number, channel)
+        return session.state() if session is not None else None
+
+    def cancel_pending(self, phone_number: str, channel: str) -> list[str]:
+        """Cancela las preguntas sin responder, igual que un mensaje cualquiera.
+
+        Revierte lo que escribieron los comandos que preguntaron. Devuelve []
+        si no había ninguna pregunta pendiente.
+        """
         business_context = self._businesses.find_context_by_phone(phone_number)
         if business_context is None:
-            return False
-        session = self._sessions.get_or_create(business_context.business.id, phone_number)
-        return bool(session.pending_selections)
+            return []
+        session = self._sessions.get_or_create(business_context.business.id, phone_number, channel)
+        if not session.pending_selections:
+            return []
+        ctx = CommandContext(
+            business=business_context.business,
+            administrator=business_context.administrator,
+            session=session,
+            sheets=self._sheets,
+            drive=self._drive,
+        )
+        return self._cancel_pending_selections(ctx)
+
+    def run_detached(self, phone_number: str, commands: list[str]) -> tuple[list[str], SessionState | None]:
+        """Ejecuta comandos en una sesión temporal que no se guarda.
+
+        La app crea y abre planillas así: no toca la conversación del chat
+        (no cancela una pregunta pendiente ni reemplaza el deshacer) y la
+        planilla activa que devuelve es la que dejó ESTE comando, no una de
+        antes. Devuelve (respuestas, estado de la sesión temporal).
+        """
+        business_context = self._businesses.find_context_by_phone(phone_number)
+        if business_context is None:
+            return [unregistered_message(phone_number)], None
+        if not self.google_connected:
+            return [GOOGLE_NOT_AUTHENTICATED_MESSAGE], None
+
+        session = UserSession(
+            business_id=business_context.business.id, phone_number=phone_number, channel="detached"
+        )
+        ctx = CommandContext(
+            business=business_context.business,
+            administrator=business_context.administrator,
+            session=session,
+            sheets=self._sheets,
+            drive=self._drive,
+        )
+        responses: list[str] = []
+        for command in commands:
+            responses.extend(self._dispatcher.dispatch(ctx, command))
+        return responses, session.state()
+
+    def _session(self, phone_number: str, channel: str):
+        business_context = self._businesses.find_context_by_phone(phone_number)
+        if business_context is None:
+            return None
+        return self._sessions.get_or_create(business_context.business.id, phone_number, channel)
 
     @staticmethod
     def _normalize(result: CommandResult) -> list[str]:

@@ -2,7 +2,8 @@
 
 Bot multi-empresa para llevar la contabilidad diaria (gastos, pagos, retiros,
 efectivo) en Google Sheets, operado por WhatsApp (Evolution API) con mensajes
-de texto o de voz (Whisper + DeepSeek).
+de texto o de voz (Whisper + DeepSeek), y por la app móvil `MoviContabilidad`
+(API `/app`).
 
 ## Arquitectura
 
@@ -19,10 +20,12 @@ src/
 ├── accounting/   # Núcleo: comandos (patrón Command), dispatcher, sesiones, deshacer
 ├── ai/           # WhisperService (transcripción) y DeepSeekService (texto -> comandos JSON)
 ├── whatsapp/     # Webhook de Evolution API, DTOs y servicio de mensajería
+├── mobile/       # API de la app móvil (/app): vinculación, planillas, chat, trabajadores
 ├── main.py       # Composition root (inyección de dependencias)
 └── cli.py        # Administración de businesses por línea de comandos
-dev/              # Evolution API simulada y script para enviar mensajes (entorno local)
+dev/              # Evolution API simulada y scripts para enviar mensajes y vincular la app (entorno local)
 tests/            # Pruebas automáticas (pytest) con Google Sheets/Drive falsos
+MoviContabilidad/ # App móvil (Expo). Plan en MoviContabilidad/docs/plan-app-movil.md
 ```
 
 ## Puesta en marcha
@@ -211,6 +214,65 @@ Ese identificador (número real o LID) es el que se registra:
 uv run python src/cli.py add-admin <business_id> "Stiven Carvajal" 4042000441346
 ```
 
+## App móvil
+
+La app `MoviContabilidad` hace lo mismo que WhatsApp desde pantallas propias
+(planillas por mes, un chat por planilla con una banda de comandos,
+trabajadores y perfil). Habla con el bot por la API `/app`.
+
+### Configuración
+
+En el `.env` (y en el servidor):
+
+- `APP_JWT_SECRET`: secreto largo y aleatorio para firmar los tokens
+  (`python -c "import secrets; print(secrets.token_urlsafe(48))"`).
+  **Sin él, `/app` responde 503.** Cambiarlo cierra todas las sesiones de la app.
+- `BOT_WHATSAPP_NUMBER`: número de WhatsApp del bot con indicativo
+  (ej. `573001234567`). La app lo usa para abrir el chat con el código.
+- `APP_ACCESS_TOKEN_MINUTES` (60) y `APP_REFRESH_TOKEN_DAYS` (90).
+
+`/app/*` debe quedar expuesto por HTTPS en el proxy (como `/auth/*`).
+
+### Vincular la app (sin contraseñas)
+
+No hay usuario ni contraseña: el administrador vincula la app desde su
+WhatsApp, porque el bot ya sabe quién le escribe (también si es un LID).
+
+1. La app muestra un código de 6 dígitos (vence en 5 minutos).
+2. El administrador le envía `VINCULAR 482913` al bot (la app abre WhatsApp
+   con el mensaje escrito).
+3. El bot responde "✅ App vinculada" y la app entra sola.
+
+`cerrar app` (por WhatsApp) cierra la app en todos los dispositivos de ese
+administrador. Desactivar un administrador por CLI también lo saca de la app.
+
+Tokens: acceso JWT de 60 minutos y refresh de 90 días que cambia en cada uso
+(en la base solo queda su SHA-256). Tablas: `app_pairings` y `app_sessions`.
+
+### Lo que la app comparte y lo que no con WhatsApp
+
+- **Sesión separada**: la planilla activa, el `deshacer` y los menús de la
+  app son independientes de los de WhatsApp. Un `deshacer` en WhatsApp nunca
+  revierte lo que se hizo en la app.
+- **Mismas reglas**: crear planillas, préstamos, nómina, límites por sección,
+  etc. pasan por los mismos comandos del bot.
+- **El historial del chat NO se guarda en el servidor**: cada teléfono lo
+  guarda en su SQLite local.
+- En el chat, lo que viene bien escrito (`Gasto` + `5.000 pan`) se registra
+  directo, sin DeepSeek. Lo demás (`5 mil de pan`) pasa por DeepSeek.
+- Reenviar un mensaje con el mismo `client_id` no lo registra dos veces.
+- Los menús de "varios trabajadores parecidos" llegan como opciones para
+  mostrar en botones.
+
+### Probar la API en local
+
+```bash
+uv run python dev/app_login.py              # vincula como el admin 999 y muestra los tokens
+curl -H "Authorization: Bearer <access_token>" http://localhost:8000/app/perfil
+```
+
+La documentación interactiva de todos los endpoints está en `/docs`.
+
 ## Endpoints
 
 | Método | Ruta | Protección | Descripción |
@@ -221,6 +283,19 @@ uv run python src/cli.py add-admin <business_id> "Stiven Carvajal" 4042000441346
 | POST | `/auth/refresh-token` | HTTP Basic | Refresca el token manualmente |
 | POST | `/whatsapp/messages-upsert` | Red interna de Docker | Webhook de Evolution API (responde 200 de inmediato) |
 | GET | `/whatsapp/messages/{id}/status` | Red interna de Docker | Estado del procesamiento de un mensaje (`processing` / `done` / `unknown`) |
+| POST | `/app/auth/vinculaciones` | Pública (10 por IP cada 10 min) | Crea un código de vinculación |
+| GET | `/app/auth/vinculaciones/{id}` | Id secreto de la vinculación | Estado; al confirmarse entrega la sesión una sola vez |
+| POST | `/app/auth/refresh` · `/app/auth/logout` | Refresh token | Renueva / cierra la sesión del dispositivo |
+| GET · PATCH | `/app/perfil` · `/app/negocio` · `/app/administrador` | Bearer | Perfil y cambio de nombres |
+| GET | `/app/comandos` | Bearer | Catálogo de comandos de la banda del chat |
+| GET | `/app/planillas/meses` · `/app/planillas?anio=&mes=` · `/app/planillas/hoy` | Bearer | Carpetas de mes, planillas de un mes, planillas de hoy con totales |
+| POST | `/app/planillas` | Bearer | Crea o abre la planilla `{fecha, hoja}` |
+| GET | `/app/planillas/{id}` · `/app/planillas/{id}/resumen` | Bearer | Detalle; totales y filas usadas por sección |
+| GET · POST | `/app/planillas/{id}/estado` · `/app/planillas/{id}/mensajes` | Bearer | Estado del chat; enviar un mensaje |
+| POST · DELETE | `/app/planillas/{id}/seleccion` | Bearer | Responder / cancelar la pregunta pendiente |
+| GET | `/app/trabajadores` · `/app/trabajadores/{id}` · `/app/trabajadores/{id}/nominas/{hoja_id}` | Bearer | Lista, período actual y nóminas archivadas |
+
+Los errores de `/app` siempre tienen la forma `{"detail": "<mensaje>", "codigo": "<CODIGO>"}`.
 
 El webhook responde a Evolution apenas llega el mensaje y lo procesa en
 segundo plano (DeepSeek y Google pueden tardar), así Evolution no lo
@@ -317,7 +392,8 @@ Las rutas dentro del contenedor (`/app/secrets/...`) se configuran en el
 `.env` (`GOOGLE_CLIENT_SECRET_PATH`, `GOOGLE_TOKEN_PATH`, `DATABASE_PATH`);
 el compose solo las reenvía, sin valores hardcodeados. Variables nuevas que
 también reenvía: `AUTH_ADMIN_USER`, `AUTH_ADMIN_PASSWORD`,
-`GOOGLE_ALLOWED_EMAILS` y `TIMEZONE`.
+`GOOGLE_ALLOWED_EMAILS`, `TIMEZONE`, `APP_JWT_SECRET`,
+`APP_ACCESS_TOKEN_MINUTES`, `APP_REFRESH_TOKEN_DAYS` y `BOT_WHATSAPP_NUMBER`.
 
 > Nota: no existe servicio de base de datos en el compose porque SQLite es
 > una base de datos embebida (un archivo), no un servidor: con el volumen

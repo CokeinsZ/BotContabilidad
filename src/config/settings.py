@@ -67,6 +67,17 @@ class Settings:
     # --- Zona horaria del negocio ("hoy", fechas de nómina, etc.) ---
     timezone: str
 
+    # --- API de la app móvil (/app) ---
+    # Sin secreto configurado, la API de la app queda deshabilitada (503).
+    app_jwt_secret: str
+    app_access_token_minutes: int
+    app_refresh_token_days: int
+    # Número de WhatsApp del bot (solo dígitos, con indicativo): la app abre
+    # wa.me/<número> para que el administrador envíe el código de vinculación.
+    bot_whatsapp_number: str
+    # Códigos de vinculación que puede pedir una misma IP cada 10 minutos.
+    app_pairings_per_ip: int
+
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
@@ -98,6 +109,11 @@ class Settings:
                 _env("DATABASE_SCHEMA_PATH", str(PROJECT_ROOT / "db.sql"))
             ),
             timezone=_env("TIMEZONE", "America/Bogota"),
+            app_jwt_secret=_env("APP_JWT_SECRET", ""),
+            app_access_token_minutes=int(_env("APP_ACCESS_TOKEN_MINUTES", "60")),
+            app_refresh_token_days=int(_env("APP_REFRESH_TOKEN_DAYS", "90")),
+            bot_whatsapp_number="".join(filter(str.isdigit, _env("BOT_WHATSAPP_NUMBER", ""))),
+            app_pairings_per_ip=int(_env("APP_PAIRINGS_PER_IP", "10")),
         )
 
 

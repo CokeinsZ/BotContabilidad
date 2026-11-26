@@ -191,6 +191,63 @@ class DriveClient:
         """Lista (id, nombre) de todos los spreadsheets de una carpeta."""
         return self._list_children(folder_id, _SHEET_MIME) or []
 
+    def try_list_files_in_folder(self, folder_id: str) -> list[tuple[str, str]] | None:
+        """Como `list_files_in_folder`, pero None si Drive falla (no lo confunde con vacía)."""
+        return self._list_children(folder_id, _SHEET_MIME)
+
+    def list_month_folders(self, folder_id: str) -> list[tuple[str, str, tuple[int, int]]] | None:
+        """Carpetas `mes-aaaa` del business: (id, nombre, (año, mes)). None si Drive falla.
+
+        Las carpetas cuyo nombre no es un mes se ignoran.
+        """
+        folders = self._list_children(folder_id, _FOLDER_MIME)
+        if folders is None:
+            return None
+        months = []
+        for month_folder_id, name in folders:
+            month = self._parse_month_folder(name)
+            if month is not None:
+                months.append((month_folder_id, name, month))
+        return months
+
+    def list_planillas_of_month(
+        self, folder_id: str, year: int, month: int
+    ) -> list[tuple[str, str]] | None:
+        """(id, nombre) de los spreadsheets de la carpeta de un mes.
+
+        [] si la carpeta del mes no existe; None si Drive falla.
+        """
+        if not 1 <= month <= 12:
+            return []
+        month_folder_name = f"{_MONTH_NAMES[month - 1]}-{year}"
+        folders = self._list_children(folder_id, _FOLDER_MIME)
+        if folders is None:
+            return None
+        month_folder_id = next((fid for fid, name in folders if name == month_folder_name), None)
+        if month_folder_id is None:
+            return []
+        return self._list_children(month_folder_id, _SHEET_MIME)
+
+    def get_file(self, file_id: str) -> dict | None:
+        """Metadatos de un archivo: id, name, mimeType, parents, trashed.
+
+        None si no existe, no es accesible o Drive falla.
+        """
+        try:
+            return execute(
+                self.service.files().get(
+                    fileId=file_id, fields="id,name,mimeType,parents,trashed"
+                )
+            )
+        except HttpError as error:
+            if getattr(error.resp, "status", None) == 404:
+                return None
+            log_error("leyendo metadatos de archivo en Drive", error, f"file_id={file_id}")
+            return None
+        except Exception as error:
+            log_error("leyendo metadatos de archivo en Drive (inesperado)", error, f"file_id={file_id}")
+            return None
+
     def list_planillas_from(self, folder_id: str, from_date: date) -> list[tuple[str, str]] | None:
         """(id, nombre) de las planillas de las carpetas de mes desde `from_date`.
 

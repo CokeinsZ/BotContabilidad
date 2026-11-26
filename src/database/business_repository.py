@@ -18,22 +18,33 @@ class BusinessRepository:
         Es la consulta central del bot: permite que un mismo bot atienda a
         múltiples empresas identificando al remitente del mensaje.
         """
+        return self._find_context("a.phone_number = ?", phone_number)
+
+    def find_context_by_admin_id(self, administrator_id: int) -> BusinessContext | None:
+        """Business y administrador por id del administrador (app móvil).
+
+        Igual que por teléfono, solo devuelve administradores y negocios
+        activos: desactivar a alguien por CLI lo saca también de la app.
+        """
+        return self._find_context("a.id = ?", administrator_id)
+
+    def _find_context(self, condition: str, value) -> BusinessContext | None:
         row = (
             self._db.connect()
             .execute(
-                """
+                f"""
                 SELECT
                     b.id   AS b_id,  b.name AS b_name,  b.sheets_folder_id, b.workers_folder_id, b.state AS b_state,
                     a.id   AS a_id,  a.name AS a_name,  a.phone_number,     a.state AS a_state,
                     a.business_id
                 FROM business_administrators a
                 INNER JOIN businesses b ON b.id = a.business_id
-                WHERE a.phone_number = ?
+                WHERE {condition}
                   AND a.state = 'active'
                   AND b.state = 'active'
                 LIMIT 1
                 """,
-                (phone_number,),
+                (value,),
             )
             .fetchone()
         )
@@ -117,6 +128,30 @@ class BusinessRepository:
             WHERE id = ?
             """,
             (workers_folder_id, business_id),
+        )
+        connection.commit()
+
+    def update_business_name(self, business_id: int, name: str) -> None:
+        connection = self._db.connect()
+        connection.execute(
+            """
+            UPDATE businesses
+            SET name = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (name, business_id),
+        )
+        connection.commit()
+
+    def update_administrator_name(self, administrator_id: int, name: str) -> None:
+        connection = self._db.connect()
+        connection.execute(
+            """
+            UPDATE business_administrators
+            SET name = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (name, administrator_id),
         )
         connection.commit()
 

@@ -22,6 +22,8 @@ services:
       GOOGLE_TOKEN_PATH: /app/secrets/token.json
       DATABASE_PATH: /app/secrets/data/bot_contabilidad.db
       DATABASE_SCHEMA_PATH: /app/db.sql
+      # Las pruebas E2E vinculan la app muchas veces seguidas desde la misma IP.
+      APP_PAIRINGS_PER_IP: "1000"
     volumes:
       - ./client_secret.json:/app/secrets/client_secret.json:ro
       - ./token.json:/app/secrets/token.json

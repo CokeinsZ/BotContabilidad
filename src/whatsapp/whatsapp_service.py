@@ -8,10 +8,13 @@ reenvía el mismo mensaje. Además:
 - Los mensajes de un mismo remitente se procesan en orden de llegada (un
   "1" que responde un menú no puede adelantarse al mensaje que lo creó).
 - Un mensaje con un id ya recibido se descarta (reenvíos de Evolution).
+- "VINCULAR <código>" y "cerrar app" son para la app móvil: se responden sin
+  pasar por DeepSeek ni por la contabilidad (no cancelan un menú pendiente).
 """
 import asyncio
 import base64
 from collections import OrderedDict
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -20,6 +23,9 @@ from ai.deepseek_service import DeepSeekService
 from ai.whisper_service import WhisperService
 from config.log import log_error, log_warning
 from whatsapp.dto import IncomingMessage
+
+if TYPE_CHECKING:
+    from mobile.auth import AppAuthService
 
 #: Cuántos ids de mensaje se recuerdan para descartar duplicados.
 SEEN_MESSAGES_LIMIT = 5000
@@ -40,6 +46,7 @@ class WhatsAppService:
         whisper_service: WhisperService,
         deepseek_service: DeepSeekService,
         accounting_service: AccountingService,
+        app_auth: "AppAuthService | None" = None,
     ):
         self._base_url = evolution_base_url
         self._instance_name = evolution_instance_name
@@ -49,6 +56,7 @@ class WhatsAppService:
         self._whisper = whisper_service
         self._deepseek = deepseek_service
         self._accounting = accounting_service
+        self._app_auth = app_auth
 
         self._tasks: set[asyncio.Task] = set()
         self._sender_locks: dict[str, asyncio.Lock] = {}
@@ -125,6 +133,9 @@ class WhatsAppService:
             f"({'audio' if message.is_audio else 'texto'})"
         )
 
+        if not message.is_audio and await self._answer_app_message(message):
+            return
+
         if message.is_audio:
             try:
                 commands = await self._audio_to_commands(message.key.id)
@@ -176,6 +187,25 @@ class WhatsAppService:
         for response in responses:
             if response:
                 await self.send_message(message.key.remote_jid, response)
+
+    async def _answer_app_message(self, message: IncomingMessage) -> bool:
+        """Responde "VINCULAR <código>" / "cerrar app". True si el mensaje era para la app."""
+        if self._app_auth is None or not self._app_auth.is_app_message(message.text):
+            return False
+        try:
+            reply = await asyncio.to_thread(
+                self._app_auth.handle_whatsapp_text, message.phone_number, message.text
+            )
+        except Exception as error:
+            log_error(
+                "procesando mensaje de vinculación de la app",
+                error,
+                f"phone={message.phone_number} text={message.text!r}",
+            )
+            reply = "⚠️ No se pudo procesar el mensaje de la app. Intenta de nuevo."
+        if reply:
+            await self.send_message(message.key.remote_jid, reply)
+        return True
 
     async def send_message(self, to: str, message: str) -> None:
         """Envía un mensaje de texto a través de Evolution API."""
